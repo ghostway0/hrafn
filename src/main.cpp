@@ -1,17 +1,17 @@
 #include <array>
 #include <condition_variable>
 #include <ctime>
+#include <expected>
 #include <optional>
 #include <span>
 #include <system_error>
 #include <variant>
 #include <vector>
-#include <expected>
 
 #include <asio.hpp>
 #include <asio/experimental/channel.hpp>
-#include <spdlog/spdlog.h>
 #include <sodium/crypto_sign.h>
+#include <spdlog/spdlog.h>
 
 #include "generated/messages_generated.h"
 
@@ -42,6 +42,11 @@ public:
                        bytes.size_bytes(),
                        bytes_.data())
                 == 0;
+    }
+
+    bool operator==(const Pubkey& other) const {
+        // not secret data
+        return other.bytes_ == bytes_;
     }
 
 private:
@@ -165,7 +170,9 @@ asio::awaitable<std::expected<Connection, int>> Connection::negotiate(
 
 struct Message {
     std::vector<uint8_t> data;
+    // should use an internal header that packs into it
     Doomday::MessageHeaderT header;
+    std::vector<Pubkey> recipients;
 };
 
 enum class SyncMode : uint8_t {
@@ -179,10 +186,31 @@ public:
 
     void add_message(Message const &message) { messages_.push_back(message); }
 
-    asio::awaitable<void> sync(Connection &connection, SyncMode mode) {
-        for (Message &message : messages_) {
-            co_await sync_one(connection, message);
+    asio::awaitable<std::expected<void, asio::error_code>> sync(
+            Connection &connection, SyncMode mode) {
+        if (mode == SyncMode::Direct && !connection.contact.has_value()) {
+            co_return std::unexpected(asio::error::invalid_argument);
         }
+
+        for (Message &message : messages_) {
+            if (mode == SyncMode::Full) {
+                co_await sync_one(connection, message);
+                continue;
+            }
+
+            // NOLINTNEXTLINE
+            Contact contact = connection.contact.value();
+
+            if (std::find(message.recipients.begin(),
+                         message.recipients.end(),
+                         contact.pubkey)
+                != message.recipients.end()) {
+                co_await sync_one(connection, message);
+            }
+        }
+
+        // weird.
+        co_return std::expected<void, asio::error_code>{};
     }
 
 private:
