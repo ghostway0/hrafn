@@ -1,13 +1,9 @@
-#include <algorithm>
-#include <spdlog/spdlog.h>
 #include <array>
-#include <cstdint>
 #include <ctime>
-#include <cwchar>
 #include <expected>
 #include <optional>
 #include <span>
-#include <system_error>
+#include <spdlog/spdlog.h>
 #include <variant>
 #include <vector>
 
@@ -16,8 +12,9 @@
 #include <asio/experimental/channel.hpp>
 #include <sodium/crypto_sign.h>
 
+#include "error.h"
 #include "messages.pb.h"
-#include "utils.h"
+#include "uuid.h"
 
 constexpr uint8_t kVersion = 42;
 constexpr uint32_t kHandshakeMessageMaxSize = 1024;
@@ -93,23 +90,23 @@ struct SemanticVersion {
     size_t minor;
     size_t patch;
 
-    static std::expected<SemanticVersion, Error> parse(std::string_view str);
+    static std::expected<SemanticVersion, ParseError> parse(std::string_view str);
 
     auto operator<=>(SemanticVersion const &) const = default;
 };
 
-std::expected<SemanticVersion, Error> SemanticVersion::parse(
+std::expected<SemanticVersion, ParseError> SemanticVersion::parse(
         std::string_view str) {
     std::vector<std::string_view> parts = absl::StrSplit(str, '.');
     if (parts.size() != 3) {
-        return std::unexpected(Error::ParseInvalidFormat);
+        return std::unexpected(ParseError::ParseInvalidFormat);
     }
 
     SemanticVersion version{};
     if (!absl::SimpleAtoi(parts[0], &version.major)
             || !absl::SimpleAtoi(parts[1], &version.minor)
             || !absl::SimpleAtoi(parts[2], &version.patch)) {
-        return std::unexpected(Error::ParseInvalidFormat);
+        return std::unexpected(ParseError::ParseInvalidFormat);
     }
 
     return version;
@@ -136,12 +133,12 @@ struct BluetoothAddress : Protocol {
 struct Multiaddr {
     SemanticVersion version;
 
-    static std::expected<Multiaddr, Error> parse(std::string_view str);
+    static std::expected<Multiaddr, ParseError> parse(std::string_view str);
 
     auto operator<=>(Multiaddr const &) const = default;
 };
 
-std::expected<Multiaddr, Error> Multiaddr::parse(
+std::expected<Multiaddr, ParseError> Multiaddr::parse(
         [[maybe_unused]] std::string_view str) {
     return {};
 }
