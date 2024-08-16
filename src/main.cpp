@@ -1,4 +1,6 @@
+#include <algorithm>
 #include <array>
+#include <cstdint>
 #include <ctime>
 #include <expected>
 #include <optional>
@@ -7,6 +9,10 @@
 #include <variant>
 #include <vector>
 
+#include <absl/crc/crc32c.h>
+#include <absl/log/globals.h>
+#include <absl/log/initialize.h>
+#include <absl/log/log.h>
 #include <absl/strings/str_split.h>
 #include <asio.hpp>
 #include <asio/experimental/channel.hpp>
@@ -18,6 +24,26 @@
 
 constexpr uint8_t kVersion = 42;
 constexpr uint32_t kHandshakeMessageMaxSize = 1024;
+constexpr uint32_t kUUIDSize = 32;
+constexpr time_t kHandshakeAcceptableTimeDrift = 32;
+
+#define try_unwrap(x) \
+    ({ \
+        auto _x = x; \
+        if (!_x.has_value()) { \
+            return std::unexpected(_x.error()); \
+        } \
+        _x.value(); \
+    })
+
+#define try_unwrap_or_error(x, err) \
+    ({ \
+        auto _x = x; \
+        if (!_x.has_value()) { \
+            co_return std::unexpected(err); \
+        } \
+        _x.value(); \
+    })
 
 class Pubkey {
 public:
@@ -25,12 +51,19 @@ public:
 
     explicit Pubkey(std::array<uint8_t, 32> bytes) : bytes_{bytes} {}
 
+    explicit Pubkey(doomday::Ed25519FieldPoint const &field_point) : bytes_{} {
+        std::copy(field_point.limbs().begin(),
+                field_point.limbs().end(),
+                bytes_.begin());
+    }
+
     std::array<uint8_t, 32> const &data() const { return bytes_; }
 
-    bool verify(std::span<uint8_t> bytes, std::span<uint8_t> signature) {
+    bool verify(absl::Span<uint8_t const> bytes,
+            absl::Span<uint8_t const> signature) {
         return crypto_sign_verify_detached(signature.data(),
                        bytes.data(),
-                       bytes.size_bytes(),
+                       bytes.size(),
                        bytes_.data())
                 == 0;
     }
@@ -90,7 +123,8 @@ struct SemanticVersion {
     size_t minor;
     size_t patch;
 
-    static std::expected<SemanticVersion, ParseError> parse(std::string_view str);
+    static std::expected<SemanticVersion, ParseError> parse(
+            std::string_view str);
 
     auto operator<=>(SemanticVersion const &) const = default;
 };
@@ -114,20 +148,47 @@ std::expected<SemanticVersion, ParseError> SemanticVersion::parse(
 
 struct Protocol {
     std::string name;
-    size_t size;
+    bool needs_argument;
+    std::optional<size_t> size;
     uint8_t code;
-    bool sized;
 
-    virtual ~Protocol() = 0;
-    virtual std::string transcode() const = 0;
+    Protocol(std::string &&name,
+            bool needs_argument,
+            std::optional<size_t> size,
+            uint8_t code)
+        : name{name}, needs_argument{needs_argument}, size{size}, code{code} {}
+
+    virtual ~Protocol() = default;
+    virtual std::string textual() const = 0;
+    virtual std::span<uint8_t const> raw() const = 0;
 };
-
-Protocol::~Protocol() = default;
 
 struct BluetoothAddress : Protocol {
     UUID address;
 
-    std::string transcode() const override { return address.to_string(); }
+    explicit BluetoothAddress(UUID addr)
+        : Protocol{"bluetooth", true, kUUIDSize, 'b'}, address{addr} {}
+
+    std::string textual() const override { return address.to_string(); }
+
+    std::span<uint8_t const> raw() const override {
+        return {address.bytes.begin(), address.bytes.end()};
+    }
+
+    static std::expected<std::shared_ptr<Protocol>, ParseError>
+    parse_to_protocol(std::string_view str) {
+        BluetoothAddress address{try_unwrap(UUID::parse(str))};
+        return std::shared_ptr(std::make_shared<BluetoothAddress>(address));
+    }
+};
+
+std::map<std::string_view,
+        std::function<std::expected<std::shared_ptr<Protocol>, ParseError>(
+                std::string_view)>> const protocol_parsers = {
+        {
+                "bluetooth",
+                BluetoothAddress::parse_to_protocol,
+        },
 };
 
 struct Multiaddr {
@@ -138,8 +199,9 @@ struct Multiaddr {
     auto operator<=>(Multiaddr const &) const = default;
 };
 
-std::expected<Multiaddr, ParseError> Multiaddr::parse(
-        [[maybe_unused]] std::string_view str) {
+std::expected<Multiaddr, ParseError> Multiaddr::parse(std::string_view str) {
+    auto split = absl::StrSplit(str, '/');
+
     return {};
 }
 
@@ -154,11 +216,20 @@ struct Identity {
     Privkey privkey;
 };
 
+enum class HandshakeError {
+    InvalidFormat,
+    InvalidVersion,
+    InvalidChecksum,
+    InvalidSignature,
+    InvalidPubkey,
+    InvalidTimestamp,
+};
+
 struct Connection {
     Stream &stream;
     std::optional<Contact> contact = std::nullopt;
 
-    static asio::awaitable<std::expected<Connection, int>> negotiate(
+    static asio::awaitable<std::expected<Connection, HandshakeError>> negotiate(
             Stream &stream, std::optional<Pubkey> pubkey);
 };
 
@@ -185,28 +256,67 @@ struct HandshakeMessage {
     }
 };
 
-asio::awaitable<std::expected<Connection, int>> Connection::negotiate(
-        Stream &stream, std::optional<Pubkey> pubkey) {
-    auto handshake =
+std::optional<HandshakeError> validate_handshake(
+        doomday::HandshakeMessage const &received_handshake,
+        std::optional<Pubkey> const &pubkey,
+        uint64_t timestamp) {
+    if (received_handshake.version() != kVersion) {
+        return HandshakeError::InvalidVersion;
+    }
+
+    std::string bytes = received_handshake.SerializeAsString();
+
+    if (absl::crc32c_t{received_handshake.checksum()}
+            != absl::ComputeCrc32c(bytes)) {
+        return HandshakeError::InvalidChecksum;
+    }
+
+    auto received_timestamp = received_handshake.timestamp();
+    if (std::abs(static_cast<int64_t>(received_timestamp - timestamp))
+            > kHandshakeAcceptableTimeDrift) {
+        return HandshakeError::InvalidTimestamp;
+    }
+
+    if (pubkey) {
+        if (!received_handshake.has_pubkey()) {
+            return HandshakeError::InvalidPubkey;
+        }
+
+        Pubkey remote_pubkey{received_handshake.pubkey()};
+        std::string const &sig = received_handshake.signature();
+
+        absl::Span<uint8_t const> bytes_span{
+                reinterpret_cast<uint8_t const *>(bytes.data()), bytes.size()};
+        absl::Span<uint8_t const> sig_span{
+                reinterpret_cast<uint8_t const *>(sig.data()), sig.size()};
+
+        if (!remote_pubkey.verify(bytes_span, sig_span)) {
+            return HandshakeError::InvalidSignature;
+        }
+    }
+
+    return std::nullopt;
+}
+
+asio::awaitable<std::expected<Connection, HandshakeError>>
+Connection::negotiate(Stream &stream, std::optional<Pubkey> pubkey) {
+    co_await stream_write_type<doomday::HandshakeMessage>(stream,
             HandshakeMessage{0, static_cast<uint64_t>(time(nullptr)), pubkey}
-                    .pack();
+                    .pack());
 
-    co_await stream_write_type<doomday::HandshakeMessage>(stream, handshake);
+    auto received_handshake = ({
+        auto handshake_or = co_await stream_read_type<doomday::HandshakeMessage,
+                doomday::HandshakeMessage,
+                kHandshakeMessageMaxSize>(stream);
+        try_unwrap_or_error(handshake_or, HandshakeError::InvalidFormat);
+    });
 
-    Pubkey remote_pubkey{};
-    auto result = co_await stream_read_type<doomday::HandshakeMessage,
-            doomday::HandshakeMessage,
-            kHandshakeMessageMaxSize>(stream);
-
-    if (!result.has_value()) {
-        co_return std::unexpected(0);
+    time_t timestamp = time(nullptr);
+    if (std::optional<HandshakeError> validation_error =
+                    validate_handshake(received_handshake, pubkey, timestamp);
+            validation_error.has_value()) {
+        co_return std::unexpected(validation_error.value());
     }
-
-    if (!remote_pubkey.verify({}, {})) {
-        co_return std::unexpected(0);
-    }
-
-    // TODO(ghostway)
 
     co_return Connection{.stream = stream};
 }
@@ -319,24 +429,11 @@ private:
     Syncer syncer_;
 };
 
-#define try_unwrap(x) \
-    ({ \
-        auto _x = x; \
-        if (!_x.has_value()) { \
-            return _x.error(); \
-        } \
-        _x.value(); \
-    })
-
 int main() {
+    // absl::InitializeLog();
+    // absl::SetStderrThreshold(absl::LogSeverityAtLeast::kInfo);
+
     asio::io_context ctx;
-
-    auto val = UUID::parse("00001101-0000-1000-8000-00805F9B34FB");
-    if (!val.has_value()) {
-        return 2;
-    }
-
-    spdlog::info("{}", val.value().to_string());
 
     Central central(ctx);
     BluetoothDiscovery discovery_service{central.events()};

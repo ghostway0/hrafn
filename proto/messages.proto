@@ -16,7 +16,7 @@ message MessageHeader {
     uint32 size = 2;
     uint32 flags = 3;
     uint64 timestamp = 4;
-    uint64 checksum = 5;
+    uint32 checksum = 5;
 }
 
 message InternalMessageHeader {
@@ -27,8 +27,7 @@ message HandshakeMessage {
     uint32 version = 1;
     uint32 flags = 2;
     uint64 timestamp = 3;
-    uint64 checksum = 4;
+    uint32 checksum = 4;
     Ed25519FieldPoint pubkey = 5;
-    Ed25519Signature signature = 6;
+    bytes signature = 6;
 }
-
