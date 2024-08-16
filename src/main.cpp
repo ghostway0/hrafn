@@ -21,6 +21,7 @@
 #include "error.h"
 #include "messages.pb.h"
 #include "uuid.h"
+#include "multiaddr.h"
 
 constexpr uint8_t kVersion = 42;
 constexpr uint32_t kHandshakeMessageMaxSize = 1024;
@@ -118,34 +119,6 @@ asio::awaitable<std::expected<void, asio::error_code>> stream_write_type(
     co_return co_await stream.write(bytes);
 }
 
-struct SemanticVersion {
-    size_t major;
-    size_t minor;
-    size_t patch;
-
-    static std::expected<SemanticVersion, ParseError> parse(
-            std::string_view str);
-
-    auto operator<=>(SemanticVersion const &) const = default;
-};
-
-std::expected<SemanticVersion, ParseError> SemanticVersion::parse(
-        std::string_view str) {
-    std::vector<std::string_view> parts = absl::StrSplit(str, '.');
-    if (parts.size() != 3) {
-        return std::unexpected(ParseError::ParseInvalidFormat);
-    }
-
-    SemanticVersion version{};
-    if (!absl::SimpleAtoi(parts[0], &version.major)
-            || !absl::SimpleAtoi(parts[1], &version.minor)
-            || !absl::SimpleAtoi(parts[2], &version.patch)) {
-        return std::unexpected(ParseError::ParseInvalidFormat);
-    }
-
-    return version;
-}
-
 struct Protocol {
     std::string name;
     bool needs_argument;
@@ -189,14 +162,6 @@ std::map<std::string_view,
                 "bluetooth",
                 BluetoothAddress::parse_to_protocol,
         },
-};
-
-struct Multiaddr {
-    SemanticVersion version;
-
-    static std::expected<Multiaddr, ParseError> parse(std::string_view str);
-
-    auto operator<=>(Multiaddr const &) const = default;
 };
 
 std::expected<Multiaddr, ParseError> Multiaddr::parse(std::string_view str) {

@@ -25,6 +25,8 @@ protobuf_generate_cpp(PROTO_SRCS PROTO_HDRS ${PROTO_FILES})
 add_executable(doomday
     src/main.cpp
     src/uuid.cpp
+    src/multiaddr.cpp
+    src/semantic_version.cpp
     ${PROTO_SRCS}
 )
 target_include_directories(doomday PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
@@ -44,8 +46,10 @@ target_link_libraries(doomday PRIVATE
 )
 
 add_executable(test_utils src/test_utils.cpp src/uuid.cpp)
-# TODO: make a set of libraries for absl
 target_link_libraries(test_utils PRIVATE doctest::doctest protobuf::libprotobuf absl::strings)
+
+add_executable(test_semver src/test_semver.cpp src/semantic_version.cpp)
+target_link_libraries(test_semver PRIVATE doctest::doctest absl::strings)
 
 if(CMAKE_BUILD_TYPE STREQUAL "Release")
     include(CheckIPOSupported)
