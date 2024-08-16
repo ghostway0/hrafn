@@ -12,6 +12,9 @@ find_package(Sodium REQUIRED)
 find_package(Protobuf CONFIG)
 find_package(Protobuf REQUIRED)
 find_package(Absl REQUIRED)
+find_package(fmt REQUIRED)
+find_package(spdlog REQUIRED)
+find_package(doctest CONFIG REQUIRED)
 
 set(PROTO_DIR ${CMAKE_CURRENT_SOURCE_DIR}/proto)
 set(PROTO_FILES
@@ -21,6 +24,7 @@ protobuf_generate_cpp(PROTO_SRCS PROTO_HDRS ${PROTO_FILES})
 
 add_executable(doomday
     src/main.cpp
+    src/utils.cpp
     ${PROTO_SRCS}
 )
 target_include_directories(doomday PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
@@ -33,8 +37,16 @@ target_include_directories(doomday PRIVATE
 target_link_libraries(doomday PRIVATE
     asio::asio
     protobuf::libprotobuf
+    absl::strings
+    fmt::fmt
+    spdlog::spdlog
     sodium
 )
+
+# TODO: make utils library?
+add_executable(test_utils src/test_utils.cpp src/utils.cpp)
+# TODO: make a set of libraries for absl
+target_link_libraries(test_utils PRIVATE doctest::doctest protobuf::libprotobuf absl::strings)
 
 if(CMAKE_BUILD_TYPE STREQUAL "Release")
     include(CheckIPOSupported)

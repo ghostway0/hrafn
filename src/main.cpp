@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <spdlog/spdlog.h>
 #include <array>
 #include <cstdint>
 #include <ctime>
@@ -10,11 +11,13 @@
 #include <variant>
 #include <vector>
 
+#include <absl/strings/str_split.h>
 #include <asio.hpp>
 #include <asio/experimental/channel.hpp>
 #include <sodium/crypto_sign.h>
 
 #include "messages.pb.h"
+#include "utils.h"
 
 constexpr uint8_t kVersion = 42;
 constexpr uint32_t kHandshakeMessageMaxSize = 1024;
@@ -85,8 +88,63 @@ asio::awaitable<std::expected<void, asio::error_code>> stream_write_type(
     co_return co_await stream.write(bytes);
 }
 
-// TODO(ghostway)
-struct Multiaddr {};
+struct SemanticVersion {
+    size_t major;
+    size_t minor;
+    size_t patch;
+
+    static std::expected<SemanticVersion, Error> parse(std::string_view str);
+
+    auto operator<=>(SemanticVersion const &) const = default;
+};
+
+std::expected<SemanticVersion, Error> SemanticVersion::parse(
+        std::string_view str) {
+    std::vector<std::string_view> parts = absl::StrSplit(str, '.');
+    if (parts.size() != 3) {
+        return std::unexpected(Error::ParseInvalidFormat);
+    }
+
+    SemanticVersion version{};
+    if (!absl::SimpleAtoi(parts[0], &version.major)
+            || !absl::SimpleAtoi(parts[1], &version.minor)
+            || !absl::SimpleAtoi(parts[2], &version.patch)) {
+        return std::unexpected(Error::ParseInvalidFormat);
+    }
+
+    return version;
+}
+
+struct Protocol {
+    std::string name;
+    size_t size;
+    uint8_t code;
+    bool sized;
+
+    virtual ~Protocol() = 0;
+    virtual std::string transcode() const = 0;
+};
+
+Protocol::~Protocol() = default;
+
+struct BluetoothAddress : Protocol {
+    UUID address;
+
+    std::string transcode() const override { return address.to_string(); }
+};
+
+struct Multiaddr {
+    SemanticVersion version;
+
+    static std::expected<Multiaddr, Error> parse(std::string_view str);
+
+    auto operator<=>(Multiaddr const &) const = default;
+};
+
+std::expected<Multiaddr, Error> Multiaddr::parse(
+        [[maybe_unused]] std::string_view str) {
+    return {};
+}
 
 struct Contact {
     std::optional<std::string> name;
@@ -264,8 +322,24 @@ private:
     Syncer syncer_;
 };
 
+#define try_unwrap(x) \
+    ({ \
+        auto _x = x; \
+        if (!_x.has_value()) { \
+            return _x.error(); \
+        } \
+        _x.value(); \
+    })
+
 int main() {
     asio::io_context ctx;
+
+    auto val = UUID::parse("00001101-0000-1000-8000-00805F9B34FB");
+    if (!val.has_value()) {
+        return 2;
+    }
+
+    spdlog::info("{}", val.value().to_string());
 
     Central central(ctx);
     BluetoothDiscovery discovery_service{central.events()};
