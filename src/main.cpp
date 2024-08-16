@@ -1,6 +1,8 @@
+#include <algorithm>
 #include <array>
-#include <condition_variable>
+#include <cstdint>
 #include <ctime>
+#include <cwchar>
 #include <expected>
 #include <optional>
 #include <span>
@@ -11,9 +13,8 @@
 #include <asio.hpp>
 #include <asio/experimental/channel.hpp>
 #include <sodium/crypto_sign.h>
-#include <spdlog/spdlog.h>
 
-#include "generated/messages_generated.h"
+#include "messages.pb.h"
 
 constexpr uint8_t kVersion = 42;
 constexpr uint32_t kHandshakeMessageMaxSize = 1024;
@@ -24,17 +25,7 @@ public:
 
     explicit Pubkey(std::array<uint8_t, 32> bytes) : bytes_{bytes} {}
 
-    explicit Pubkey(Doomday::Ed25519FieldPoint const &point) : bytes_{} {
-        std::copy(point.limbs()->begin(), point.limbs()->end(), bytes_.begin());
-    }
-
     std::array<uint8_t, 32> const &data() const { return bytes_; }
-
-    Doomday::Ed25519FieldPoint pack() const {
-        Doomday::Ed25519FieldPoint point;
-        std::copy(bytes_.begin(), bytes_.end(), point.mutable_limbs()->Data());
-        return point;
-    }
 
     bool verify(std::span<uint8_t> bytes, std::span<uint8_t> signature) {
         return crypto_sign_verify_detached(signature.data(),
@@ -44,7 +35,7 @@ public:
                 == 0;
     }
 
-    bool operator==(const Pubkey& other) const {
+    bool operator==(Pubkey const &other) const {
         // not secret data
         return other.bytes_ == bytes_;
     }
@@ -68,15 +59,9 @@ struct Stream {
 
 template<typename T, typename S>
 std::vector<uint8_t> serialize_to_bytes(S const *obj) {
-    flatbuffers::FlatBufferBuilder builder;
-
-    auto offset = T::Pack(builder, obj);
-    builder.Finish(offset);
-
-    uint8_t *buf = builder.GetBufferPointer();
-    size_t size = builder.GetSize();
-
-    return {buf, buf + size};
+    std::vector<uint8_t> bytes;
+    obj->SerializeToArray(bytes.data(), bytes.size());
+    return bytes;
 }
 
 template<typename T, typename S, size_t kSize>
@@ -85,20 +70,18 @@ asio::awaitable<std::expected<S, asio::error_code>> stream_read_type(
     std::vector<uint8_t> buffer(kSize);
     co_await stream.read(buffer);
 
-    auto verifier = flatbuffers::Verifier(buffer.data(), buffer.size());
-
-    if (!verifier.VerifyBuffer<T>()) {
+    T root;
+    if (!root.ParseFromArray(buffer.data(), buffer.size())) {
         co_return std::unexpected{asio::error::invalid_argument};
     }
 
-    T const *root = flatbuffers::GetRoot<T>(buffer.data());
-    co_return *root->UnPack();
+    co_return root;
 }
 
 template<typename T, typename S>
 asio::awaitable<std::expected<void, asio::error_code>> stream_write_type(
         Stream &stream, S val) {
-    std::vector<uint8_t> bytes = serialize_to_bytes<T>(val);
+    std::vector<uint8_t> bytes = serialize_to_bytes<T>(&val);
     co_return co_await stream.write(bytes);
 }
 
@@ -129,17 +112,18 @@ struct HandshakeMessage {
     uint64_t timestamp;
     std::optional<Pubkey> pubkey;
 
-    Doomday::HandshakeMessageT pack() const {
-        Doomday::HandshakeMessageT handshake;
+    doomday::HandshakeMessage pack() const {
+        doomday::HandshakeMessage handshake;
 
-        handshake.flags = flags;
-        handshake.timestamp = timestamp;
-        handshake.checksum = 0;
-        handshake.version = kVersion;
+        handshake.set_flags(flags);
+        handshake.set_timestamp(timestamp);
+        handshake.set_checksum(0);
+        handshake.set_version(kVersion);
 
         if (pubkey) {
-            handshake.pubkey = std::make_unique<Doomday::Ed25519FieldPoint>(
-                    pubkey.value().pack());
+            auto *data =
+                    handshake.mutable_pubkey()->mutable_limbs()->mutable_data();
+            std::copy(pubkey->data().begin(), pubkey->data().end(), data);
         }
 
         return handshake;
@@ -152,12 +136,16 @@ asio::awaitable<std::expected<Connection, int>> Connection::negotiate(
             HandshakeMessage{0, static_cast<uint64_t>(time(nullptr)), pubkey}
                     .pack();
 
-    co_await stream_write_type<Doomday::HandshakeMessage>(stream, &handshake);
+    co_await stream_write_type<doomday::HandshakeMessage>(stream, handshake);
 
     Pubkey remote_pubkey{};
-    co_await stream_read_type<Doomday::HandshakeMessage,
-            Doomday::HandshakeMessageT,
+    auto result = co_await stream_read_type<doomday::HandshakeMessage,
+            doomday::HandshakeMessage,
             kHandshakeMessageMaxSize>(stream);
+
+    if (!result.has_value()) {
+        co_return std::unexpected(0);
+    }
 
     if (!remote_pubkey.verify({}, {})) {
         co_return std::unexpected(0);
@@ -171,7 +159,7 @@ asio::awaitable<std::expected<Connection, int>> Connection::negotiate(
 struct Message {
     std::vector<uint8_t> data;
     // should use an internal header that packs into it
-    Doomday::MessageHeaderT header;
+    doomday::MessageHeader header;
     std::vector<Pubkey> recipients;
 };
 
@@ -202,9 +190,9 @@ public:
             Contact contact = connection.contact.value();
 
             if (std::find(message.recipients.begin(),
-                         message.recipients.end(),
-                         contact.pubkey)
-                != message.recipients.end()) {
+                        message.recipients.end(),
+                        contact.pubkey)
+                    != message.recipients.end()) {
                 co_await sync_one(connection, message);
             }
         }
@@ -218,7 +206,7 @@ private:
 
     asio::awaitable<void> sync_one(Connection &connection, Message message) {
         std::vector<uint8_t> header_bytes =
-                serialize_to_bytes<Doomday::MessageHeader>(&message.header);
+                serialize_to_bytes<doomday::MessageHeader>(&message.header);
 
         co_await connection.stream.write(header_bytes);
         co_await connection.stream.write(message.data);
