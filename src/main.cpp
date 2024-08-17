@@ -233,7 +233,7 @@ struct Stream {
 
 template<typename T, typename S>
 std::vector<uint8_t> serialize_to_bytes(S const *obj) {
-    std::vector<uint8_t> bytes;
+    std::vector<uint8_t> bytes(obj->ByteSizeLong());
     obj->SerializeToArray(bytes.data(), bytes.size());
     return bytes;
 }
