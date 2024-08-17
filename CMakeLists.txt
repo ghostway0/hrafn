@@ -3,7 +3,7 @@ cmake_minimum_required(VERSION 3.26)
 project(doomday LANGUAGES CXX)
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
-set(CMAKE_CXX_STANDARD 23)
+set(CMAKE_CXX_STANDARD 26)
 
 list(INSERT CMAKE_MODULE_PATH 0 "${CMAKE_CURRENT_SOURCE_DIR}/cmake/")
 
@@ -33,7 +33,6 @@ target_include_directories(doomday PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
 
 target_include_directories(doomday PRIVATE
     ${PROTO_HDRS}
-    "/opt/homebrew/Cellar/llvm@17/17.0.6/include/c++"
 )
 
 target_link_libraries(doomday PRIVATE
@@ -45,11 +44,8 @@ target_link_libraries(doomday PRIVATE
     sodium
 )
 
-add_executable(test_utils src/test_utils.cpp src/uuid.cpp)
+add_executable(test_utils src/test_utils.cpp src/uuid.cpp src/semantic_version.cpp)
 target_link_libraries(test_utils PRIVATE doctest::doctest protobuf::libprotobuf absl::strings)
-
-add_executable(test_semver src/test_semver.cpp src/semantic_version.cpp)
-target_link_libraries(test_semver PRIVATE doctest::doctest absl::strings)
 
 if(CMAKE_BUILD_TYPE STREQUAL "Release")
     include(CheckIPOSupported)

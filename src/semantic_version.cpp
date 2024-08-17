@@ -9,14 +9,14 @@ std::expected<SemanticVersion, ParseError> SemanticVersion::parse(
         std::string_view str) {
     std::vector<std::string_view> parts = absl::StrSplit(str, '.');
     if (parts.size() != 3) {
-        return std::unexpected(ParseError::ParseInvalidFormat);
+        return std::unexpected(ParseError::InvalidFormat);
     }
 
     SemanticVersion version{};
     if (!absl::SimpleAtoi(parts[0], &version.major)
             || !absl::SimpleAtoi(parts[1], &version.minor)
             || !absl::SimpleAtoi(parts[2], &version.patch)) {
-        return std::unexpected(ParseError::ParseInvalidFormat);
+        return std::unexpected(ParseError::InvalidFormat);
     }
 
     return version;

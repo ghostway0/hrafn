@@ -1,6 +1,6 @@
 #pragma once
 
 enum class ParseError {
-    ParseInvalidFormat,
-    ParseConversionFailed,
+    InvalidFormat,
+    ConversionFailed,
 };

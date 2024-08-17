@@ -18,7 +18,7 @@ std::expected<UUID, ParseError> UUID::parse(std::string_view str) {
     }
 
     if (clean.size() != 32) {
-        return std::unexpected(ParseError::ParseInvalidFormat);
+        return std::unexpected(ParseError::InvalidFormat);
     }
 
     UUID uuid{};
@@ -28,12 +28,24 @@ std::expected<UUID, ParseError> UUID::parse(std::string_view str) {
         std::string byte_result;
 
         if (!absl::HexStringToBytes(byte_str, &byte_result)) {
-            return std::unexpected(ParseError::ParseInvalidFormat);
+            return std::unexpected(ParseError::InvalidFormat);
         }
 
         assert(byte_result.size() == 1);
         uuid.bytes[i] = static_cast<uint8_t>(byte_result[0]);
     }
+
+    return uuid;
+}
+
+std::expected<UUID, ParseError> UUID::parse_raw(
+        std::span<uint8_t> bytes) {
+    if (bytes.size() != 16) {
+        return std::unexpected(ParseError::InvalidFormat);
+    }
+
+    UUID uuid{};
+    std::copy(bytes.begin(), bytes.end(), uuid.bytes.begin());
 
     return uuid;
 }

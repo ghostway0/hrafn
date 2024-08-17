@@ -20,12 +20,11 @@
 
 #include "error.h"
 #include "messages.pb.h"
-#include "uuid.h"
 #include "multiaddr.h"
+#include "uuid.h"
 
 constexpr uint8_t kVersion = 42;
 constexpr uint32_t kHandshakeMessageMaxSize = 1024;
-constexpr uint32_t kUUIDSize = 32;
 constexpr time_t kHandshakeAcceptableTimeDrift = 32;
 
 #define try_unwrap(x) \
@@ -117,57 +116,6 @@ asio::awaitable<std::expected<void, asio::error_code>> stream_write_type(
         Stream &stream, S val) {
     std::vector<uint8_t> bytes = serialize_to_bytes<T>(&val);
     co_return co_await stream.write(bytes);
-}
-
-struct Protocol {
-    std::string name;
-    bool needs_argument;
-    std::optional<size_t> size;
-    uint8_t code;
-
-    Protocol(std::string &&name,
-            bool needs_argument,
-            std::optional<size_t> size,
-            uint8_t code)
-        : name{name}, needs_argument{needs_argument}, size{size}, code{code} {}
-
-    virtual ~Protocol() = default;
-    virtual std::string textual() const = 0;
-    virtual std::span<uint8_t const> raw() const = 0;
-};
-
-struct BluetoothAddress : Protocol {
-    UUID address;
-
-    explicit BluetoothAddress(UUID addr)
-        : Protocol{"bluetooth", true, kUUIDSize, 'b'}, address{addr} {}
-
-    std::string textual() const override { return address.to_string(); }
-
-    std::span<uint8_t const> raw() const override {
-        return {address.bytes.begin(), address.bytes.end()};
-    }
-
-    static std::expected<std::shared_ptr<Protocol>, ParseError>
-    parse_to_protocol(std::string_view str) {
-        BluetoothAddress address{try_unwrap(UUID::parse(str))};
-        return std::shared_ptr(std::make_shared<BluetoothAddress>(address));
-    }
-};
-
-std::map<std::string_view,
-        std::function<std::expected<std::shared_ptr<Protocol>, ParseError>(
-                std::string_view)>> const protocol_parsers = {
-        {
-                "bluetooth",
-                BluetoothAddress::parse_to_protocol,
-        },
-};
-
-std::expected<Multiaddr, ParseError> Multiaddr::parse(std::string_view str) {
-    auto split = absl::StrSplit(str, '/');
-
-    return {};
 }
 
 struct Contact {

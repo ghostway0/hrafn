@@ -4,6 +4,7 @@
 #include <doctest/doctest.h>
 
 #include "uuid.h"
+#include "semantic_version.h"
 
 TEST_CASE("UUID parse/to_string") {
     SUBCASE("Empty") {
@@ -33,4 +34,19 @@ TEST_CASE("UUID parse/to_string") {
         CHECK_EQ(b.value().to_string(), s);
         CHECK_EQ(c.value().to_string(), s);
     }
+}
+
+TEST_CASE("Semver parse/to_string") {
+    SUBCASE("Empty") {
+        CHECK(!SemanticVersion::parse("").has_value());
+    }
+
+    SUBCASE("Wrong") {
+        CHECK(!SemanticVersion::parse("1.2.b").has_value());
+    }
+
+    auto semver = SemanticVersion::parse("1.2.3");
+    CHECK(semver.has_value());
+
+    CHECK_EQ(semver.value(), SemanticVersion{1, 2, 3});
 }
