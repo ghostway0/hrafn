@@ -3,8 +3,8 @@
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include <doctest/doctest.h>
 
-#include "uuid.h"
 #include "semantic_version.h"
+#include "uuid.h"
 
 TEST_CASE("UUID parse/to_string") {
     SUBCASE("Empty") {

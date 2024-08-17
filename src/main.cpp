@@ -2,7 +2,9 @@
 #include <array>
 #include <cstdint>
 #include <ctime>
+#include <cwchar>
 #include <expected>
+#include <memory>
 #include <optional>
 #include <span>
 #include <spdlog/spdlog.h>
@@ -18,10 +20,8 @@
 #include <asio/experimental/channel.hpp>
 #include <sodium/crypto_sign.h>
 
-#include "error.h"
 #include "messages.pb.h"
 #include "multiaddr.h"
-#include "uuid.h"
 
 constexpr uint8_t kVersion = 42;
 constexpr uint32_t kHandshakeMessageMaxSize = 1024;
@@ -99,9 +99,9 @@ std::vector<uint8_t> serialize_to_bytes(S const *obj) {
 
 template<typename T, typename S, size_t kSize>
 asio::awaitable<std::expected<S, asio::error_code>> stream_read_type(
-        Stream &stream) {
+        std::shared_ptr<Stream> stream) {
     std::vector<uint8_t> buffer(kSize);
-    co_await stream.read(buffer);
+    co_await stream->read(buffer);
 
     T root;
     if (!root.ParseFromArray(buffer.data(), buffer.size())) {
@@ -111,11 +111,13 @@ asio::awaitable<std::expected<S, asio::error_code>> stream_read_type(
     co_return root;
 }
 
+// stream should outlive everything, but I'm not sure.
+
 template<typename T, typename S>
 asio::awaitable<std::expected<void, asio::error_code>> stream_write_type(
-        Stream &stream, S val) {
+        std::shared_ptr<Stream> stream, S val) {
     std::vector<uint8_t> bytes = serialize_to_bytes<T>(&val);
-    co_return co_await stream.write(bytes);
+    co_return co_await stream->write(bytes);
 }
 
 struct Contact {
@@ -139,11 +141,11 @@ enum class HandshakeError {
 };
 
 struct Connection {
-    Stream &stream;
+    std::shared_ptr<Stream> stream;
     std::optional<Contact> contact = std::nullopt;
 
     static asio::awaitable<std::expected<Connection, HandshakeError>> negotiate(
-            Stream &stream, std::optional<Pubkey> pubkey);
+            std::shared_ptr<Stream> stream, std::optional<Pubkey> pubkey);
 };
 
 struct HandshakeMessage {
@@ -212,7 +214,8 @@ std::optional<HandshakeError> validate_handshake(
 }
 
 asio::awaitable<std::expected<Connection, HandshakeError>>
-Connection::negotiate(Stream &stream, std::optional<Pubkey> pubkey) {
+Connection::negotiate(
+        std::shared_ptr<Stream> stream, std::optional<Pubkey> pubkey) {
     co_await stream_write_type<doomday::HandshakeMessage>(stream,
             HandshakeMessage{0, static_cast<uint64_t>(time(nullptr)), pubkey}
                     .pack());
@@ -286,8 +289,8 @@ private:
         std::vector<uint8_t> header_bytes =
                 serialize_to_bytes<doomday::MessageHeader>(&message.header);
 
-        co_await connection.stream.write(header_bytes);
-        co_await connection.stream.write(message.data);
+        co_await connection.stream->write(header_bytes);
+        co_await connection.stream->write(message.data);
     }
 };
 

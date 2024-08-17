@@ -38,8 +38,7 @@ std::expected<UUID, ParseError> UUID::parse(std::string_view str) {
     return uuid;
 }
 
-std::expected<UUID, ParseError> UUID::parse_raw(
-        std::span<uint8_t> bytes) {
+std::expected<UUID, ParseError> UUID::parse_raw(std::span<uint8_t> bytes) {
     if (bytes.size() != 16) {
         return std::unexpected(ParseError::InvalidFormat);
     }

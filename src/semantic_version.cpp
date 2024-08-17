@@ -1,7 +1,7 @@
 #include <expected>
 
-#include <absl/strings/str_split.h>
 #include <absl/strings/numbers.h>
+#include <absl/strings/str_split.h>
 
 #include "semantic_version.h"
 
