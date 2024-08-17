@@ -1,7 +1,5 @@
 #pragma once
 
-#include <absl/strings/str_split.h>
-#include <__fwd/string_view.h>
 #include <cstdint>
 #include <expected>
 #include <optional>
@@ -12,6 +10,8 @@
 #include <iterator>
 #include <memory>
 #include <span>
+
+#include <absl/strings/str_split.h>
 
 #include "error.h"
 #include "semantic_version.h"

@@ -14,5 +14,6 @@ struct UUID {
 
     static std::expected<UUID, ParseError> parse(std::string_view str);
     static std::expected<UUID, ParseError> parse_raw(std::span<uint8_t> bytes);
+
     std::string to_string() const;
 };

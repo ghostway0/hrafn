@@ -15,10 +15,12 @@
 #include <absl/crc/crc32c.h>
 #include <absl/log/globals.h>
 #include <absl/log/initialize.h>
-#include <absl/log/log.h>
+#include <absl/strings/escaping.h>
 #include <absl/strings/str_split.h>
 #include <asio.hpp>
 #include <asio/experimental/channel.hpp>
+#include <sodium/crypto_box.h>
+#include <sodium/crypto_hash_sha256.h>
 #include <sodium/crypto_sign.h>
 
 #include "messages.pb.h"
@@ -27,6 +29,8 @@
 constexpr uint8_t kVersion = 42;
 constexpr uint32_t kHandshakeMessageMaxSize = 1024;
 constexpr time_t kHandshakeAcceptableTimeDrift = 32;
+constexpr uint32_t kPubkeySize = 32;
+constexpr uint32_t kPrivkeySize = 32;
 
 #define try_unwrap(x) \
     ({ \
@@ -48,9 +52,7 @@ constexpr time_t kHandshakeAcceptableTimeDrift = 32;
 
 class Pubkey {
 public:
-    Pubkey() = default;
-
-    explicit Pubkey(std::array<uint8_t, 32> bytes) : bytes_{bytes} {}
+    explicit Pubkey(std::array<uint8_t, kPubkeySize> bytes) : bytes_{bytes} {}
 
     explicit Pubkey(doomday::Ed25519FieldPoint const &field_point) : bytes_{} {
         std::copy(field_point.limbs().begin(),
@@ -58,7 +60,20 @@ public:
                 bytes_.begin());
     }
 
-    std::array<uint8_t, 32> const &data() const { return bytes_; }
+    static std::optional<Pubkey> from_base64(std::string_view base64) {
+        std::string decoded;
+        if (!absl::Base64Unescape(base64, &decoded)
+                || decoded.size() != kPubkeySize) {
+            return std::nullopt;
+        }
+
+        std::array<uint8_t, kPrivkeySize> bytes{};
+        std::copy(decoded.begin(), decoded.end(), bytes.begin());
+
+        return Pubkey{std::move(bytes)};
+    }
+
+    std::array<uint8_t, kPubkeySize> const &data() const { return bytes_; }
 
     bool verify(absl::Span<uint8_t const> bytes,
             absl::Span<uint8_t const> signature) {
@@ -69,18 +84,143 @@ public:
                 == 0;
     }
 
+    std::string to_string() const {
+        std::string buffer{};
+        for (uint8_t byte : bytes_) {
+            absl::StrAppendFormat(&buffer, "%02x", byte);
+        }
+
+        return buffer;
+    }
+
+    std::string to_base64() const {
+        return absl::Base64Escape(absl::string_view{
+                reinterpret_cast<char const *>(bytes_.data()), bytes_.size()});
+    }
+
+    std::vector<uint8_t> encrypt_to(std::span<uint8_t> message) {
+        std::vector<uint8_t> ciphertext(message.size() + crypto_box_SEALBYTES);
+        crypto_box_seal(ciphertext.data(),
+                message.data(),
+                message.size(),
+                bytes_.data());
+        return ciphertext;
+    }
+
     bool operator==(Pubkey const &other) const {
         // not secret data
         return other.bytes_ == bytes_;
     }
 
+    bool operator<=>(Pubkey const &other) const = delete;
+
 private:
-    std::array<uint8_t, 32> bytes_;
+    std::array<uint8_t, kPubkeySize> bytes_;
 };
 
-class Privkey {};
+struct PeerId {
+    std::vector<uint8_t> bytes;
 
-class Keypair {};
+    static std::optional<PeerId> from_base64(std::string_view base64) {
+        std::string decoded;
+        if (!absl::Base64Unescape(base64, &decoded)) {
+            return std::nullopt;
+        }
+
+        return PeerId{std::vector<uint8_t>(decoded.begin(), decoded.end())};
+    }
+
+    static PeerId from_pubkey(Pubkey const &pubkey) {
+        std::vector<uint8_t> bytes(crypto_hash_sha256_BYTES);
+        crypto_hash_sha256(
+                bytes.data(), pubkey.data().data(), pubkey.data().size());
+
+        return PeerId{bytes};
+    }
+
+    std::string to_base64() const {
+        return absl::Base64Escape(absl::string_view{
+                reinterpret_cast<char const *>(bytes.data()), bytes.size()});
+    }
+
+    std::string to_string() const {
+        std::string buffer{};
+        for (uint8_t byte : bytes) {
+            absl::StrAppendFormat(&buffer, "%02x", byte);
+        }
+
+        return buffer;
+    }
+};
+
+class Privkey {
+public:
+    explicit Privkey(std::array<uint8_t, kPrivkeySize> &&bytes)
+        : bytes_{bytes} {
+        std::fill(bytes.begin(), bytes.end(), 0);
+    }
+
+    explicit Privkey(doomday::Ed25519FieldPoint &&field_point) : bytes_{} {
+        std::copy(field_point.limbs().begin(),
+                field_point.limbs().end(),
+                bytes_.begin());
+        // TODO(): zero out field_point
+    }
+
+    Privkey(Privkey &&other) : bytes_{} {
+        std::copy(bytes_.begin(), bytes_.end(), bytes_.begin());
+        std::fill(other.bytes_.begin(), other.bytes_.end(), 0);
+    }
+
+    Privkey(Privkey const &) = delete;
+
+    ~Privkey() { std::fill(bytes_.begin(), bytes_.end(), 0); }
+
+    static std::optional<Privkey> from_base64(std::string_view base64) {
+        std::string decoded;
+        if (!absl::Base64Unescape(base64, &decoded)
+                || decoded.size() != kPrivkeySize) {
+            return std::nullopt;
+        }
+
+        std::array<uint8_t, kPrivkeySize> bytes{};
+        std::copy(decoded.begin(), decoded.end(), bytes.begin());
+        std::fill(decoded.begin(), decoded.end(), 0);
+
+        return Privkey{std::move(bytes)};
+    }
+
+    std::array<uint8_t, kPrivkeySize> const &data() const { return bytes_; }
+
+    std::vector<uint8_t> sign(std::span<uint8_t> message) {
+        std::vector<uint8_t> signature(crypto_sign_BYTES);
+        crypto_sign_detached(signature.data(),
+                nullptr,
+                message.data(),
+                message.size(),
+                bytes_.data());
+        return signature;
+    }
+
+    std::optional<std::vector<uint8_t>> decrypt(std::span<uint8_t> ciphertext) {
+        std::vector<uint8_t> message(ciphertext.size() - crypto_box_SEALBYTES);
+        if (crypto_box_seal_open(message.data(),
+                    ciphertext.data(),
+                    ciphertext.size(),
+                    bytes_.data(),
+                    bytes_.data())
+                != 0) {
+            return std::nullopt;
+        }
+
+        return message;
+    }
+
+    bool operator<=>(Privkey const &other) = delete;
+
+private:
+    std::array<uint8_t, kPrivkeySize> bytes_;
+};
 
 struct Stream {
     virtual ~Stream() = default;
@@ -346,21 +486,7 @@ private:
     Syncer syncer_;
 };
 
-static constexpr std::vector<uint8_t> encode_varint2(uint64_t val) {
-    std::vector<uint8_t> result;
-    while (val >= 0x80) {
-        result.push_back((val & 0xFF) | 0x80);
-        val >>= 7;
-    }
-    result.push_back(val & 0xFF);
-    return result;
-}
-
 int main() {
-    spdlog::info("{}", fmt::join(encode_varint2(0x1337), ","));
-    absl::InitializeLog();
-    absl::SetStderrThreshold(absl::LogSeverityAtLeast::kInfo);
-
     asio::io_context ctx;
 
     Central central(ctx);
