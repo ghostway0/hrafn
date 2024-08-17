@@ -16,6 +16,8 @@ find_package(fmt REQUIRED)
 find_package(spdlog REQUIRED)
 find_package(doctest CONFIG REQUIRED)
 
+find_program(iwyu_path NAMES include-what-you-use iwyu REQUIRED)
+
 set(PROTO_DIR ${CMAKE_CURRENT_SOURCE_DIR}/proto)
 set(PROTO_FILES
     ${PROTO_DIR}/messages.proto
@@ -51,6 +53,8 @@ add_executable(test_utils
     src/multiaddr.cpp
 )
 target_link_libraries(test_utils PRIVATE doctest::doctest protobuf::libprotobuf absl::strings spdlog::spdlog fmt::fmt)
+
+# set_property(TARGET test_utils PROPERTY CXX_INCLUDE_WHAT_YOU_USE ${iwyu_path})
 
 if(CMAKE_BUILD_TYPE STREQUAL "Release")
     include(CheckIPOSupported)

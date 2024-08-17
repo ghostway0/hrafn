@@ -1,13 +1,15 @@
-#include <cassert>
 #include <expected>
 #include <functional>
 #include <map>
 #include <string_view>
 #include <vector>
+#include <algorithm>
+#include <utility>
+
+#include <absl/strings/str_format.h>
 
 #include "multiaddr.h"
 #include "semantic_version.h"
-#include <absl/strings/str_format.h>
 
 struct VectorCompare {
     bool operator()(std::vector<uint8_t> const &lhs,

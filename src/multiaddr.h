@@ -1,18 +1,24 @@
 #pragma once
 
-#include <cstddef>
+#include <absl/strings/str_split.h>
+#include <__fwd/string_view.h>
 #include <cstdint>
 #include <expected>
 #include <optional>
 #include <string>
 #include <string_view>
-
-#include <absl/strings/str_split.h>
 #include <vector>
+#include <array>
+#include <iterator>
+#include <memory>
+#include <span>
 
 #include "error.h"
 #include "semantic_version.h"
 #include "uuid.h"
+
+struct Multiaddr;
+struct Protocol;
 
 constexpr uint32_t kUUIDSize = 32;
 

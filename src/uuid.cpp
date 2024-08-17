@@ -1,11 +1,13 @@
+#include <absl/strings/escaping.h>
+#include <absl/strings/str_format.h>
+#include <_ctype.h>
+#include <stddef.h>
 #include <cassert>
 #include <cctype>
 #include <expected>
-
-#include <absl/strings/escaping.h>
-#include <absl/strings/str_format.h>
-#include <absl/strings/str_split.h>
 #include <string>
+#include <algorithm>
+#include <string_view>
 
 #include "uuid.h"
 
