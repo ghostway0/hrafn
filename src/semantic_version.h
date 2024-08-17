@@ -14,5 +14,7 @@ struct SemanticVersion {
     static std::expected<SemanticVersion, ParseError> parse(
             std::string_view str);
 
+    std::string to_string() const;
+
     auto operator<=>(SemanticVersion const &) const = default;
 };

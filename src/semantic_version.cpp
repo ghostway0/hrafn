@@ -21,3 +21,8 @@ std::expected<SemanticVersion, ParseError> SemanticVersion::parse(
 
     return version;
 }
+
+std::string SemanticVersion::to_string() const {
+    return std::to_string(major) + "." + std::to_string(minor) + "."
+            + std::to_string(patch);
+}

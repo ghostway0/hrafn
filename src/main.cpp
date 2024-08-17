@@ -4,6 +4,7 @@
 #include <ctime>
 #include <cwchar>
 #include <expected>
+#include <fmt/ranges.h>
 #include <memory>
 #include <optional>
 #include <span>
@@ -345,9 +346,20 @@ private:
     Syncer syncer_;
 };
 
+static constexpr std::vector<uint8_t> encode_varint2(uint64_t val) {
+    std::vector<uint8_t> result;
+    while (val >= 0x80) {
+        result.push_back((val & 0xFF) | 0x80);
+        val >>= 7;
+    }
+    result.push_back(val & 0xFF);
+    return result;
+}
+
 int main() {
-    // absl::InitializeLog();
-    // absl::SetStderrThreshold(absl::LogSeverityAtLeast::kInfo);
+    spdlog::info("{}", fmt::join(encode_varint2(0x1337), ","));
+    absl::InitializeLog();
+    absl::SetStderrThreshold(absl::LogSeverityAtLeast::kInfo);
 
     asio::io_context ctx;
 

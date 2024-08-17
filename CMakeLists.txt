@@ -44,8 +44,13 @@ target_link_libraries(doomday PRIVATE
     sodium
 )
 
-add_executable(test_utils src/test_utils.cpp src/uuid.cpp src/semantic_version.cpp)
-target_link_libraries(test_utils PRIVATE doctest::doctest protobuf::libprotobuf absl::strings)
+add_executable(test_utils
+    src/test_utils.cpp
+    src/uuid.cpp
+    src/semantic_version.cpp
+    src/multiaddr.cpp
+)
+target_link_libraries(test_utils PRIVATE doctest::doctest protobuf::libprotobuf absl::strings spdlog::spdlog fmt::fmt)
 
 if(CMAKE_BUILD_TYPE STREQUAL "Release")
     include(CheckIPOSupported)

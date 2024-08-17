@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstddef>
+#include <cstdint>
 #include <expected>
 #include <optional>
 #include <string>
@@ -26,52 +27,87 @@ constexpr uint32_t kUUIDSize = 32;
 
 struct Protocol {
     std::string name;
-    bool needs_argument;
-    std::optional<size_t> size;
     uint8_t code;
 
-    Protocol(std::string &&name,
-            bool needs_argument,
-            std::optional<size_t> size,
-            uint8_t code)
-        : name{name}, needs_argument{needs_argument}, size{size}, code{code} {}
+    Protocol(std::string &&name, uint8_t code) : name{name}, code{code} {}
 
     virtual ~Protocol() = default;
-    virtual std::string textual() const = 0;
+    virtual std::string to_string() const = 0;
     virtual std::span<uint8_t const> raw() const = 0;
 };
 
 struct Multiaddr {
     std::vector<std::shared_ptr<Protocol>> protocols;
     std::vector<uint8_t> identifier;
-    SemanticVersion version;
+    std::optional<SemanticVersion> version;
 
     static std::expected<Multiaddr, ParseError> parse(std::string_view str);
 
+    std::string to_string() const;
+
     auto operator<=>(Multiaddr const &) const = default;
+};
+
+class MultiaddrStringTokenizer {
+public:
+    explicit MultiaddrStringTokenizer(std::string_view str)
+        : tokens_{absl::StrSplit(str, '/')}, current_{tokens_.begin()} {}
+
+    std::optional<std::string_view> next() {
+        if (current_ != tokens_.end()) {
+            return *current_++;
+        }
+        return std::nullopt;
+    }
+
+    bool is_done() {
+        return current_ == tokens_.end()
+                || std::next(current_) == tokens_.end();
+    }
+
+private:
+    std::vector<std::string_view> tokens_;
+    std::vector<std::string_view>::iterator current_;
+};
+
+class MultiaddrRawTokenizer {
+public:
+    explicit MultiaddrRawTokenizer(std::vector<uint8_t> str) {}
+
+    std::optional<std::vector<uint8_t>> next() {
+        // if (current_ != tokens_.end()) {
+        //     return *current_++;
+        // }
+        return std::nullopt;
+    }
+
+private:
+    // std::vector<std::uint8_t> tokens_;
+    // std::vector<std::string_view>::iterator current_;
 };
 
 struct BluetoothAddress : Protocol {
     UUID address;
 
     explicit BluetoothAddress(UUID addr)
-        : Protocol{"bluetooth", true, kUUIDSize, 'b'}, address{addr} {}
+        : Protocol{"btu", 'b'}, address{addr} {}
 
-    std::string textual() const override { return address.to_string(); }
+    std::string to_string() const override { return address.to_string(); }
 
     std::span<uint8_t const> raw() const override {
         return {address.bytes.begin(), address.bytes.end()};
     }
 
-    static std::expected<std::shared_ptr<Protocol>, ParseError>
-    parse_to_protocol(std::string_view str) {
-        BluetoothAddress address{try_unwrap(UUID::parse(str))};
-        return std::shared_ptr(std::make_shared<BluetoothAddress>(address));
+    static std::expected<std::unique_ptr<Protocol>, ParseError>
+    parse_to_protocol(MultiaddrStringTokenizer &iter) {
+        BluetoothAddress address{try_unwrap(UUID::parse(iter.next().value()))};
+        return std::unique_ptr(std::make_unique<BluetoothAddress>(address));
     }
 
-    static std::expected<std::shared_ptr<Protocol>, ParseError>
-    parse_raw_to_protocol(std::span<uint8_t> bytes) {
-        BluetoothAddress address{try_unwrap(UUID::parse_raw(bytes))};
-        return std::shared_ptr(std::make_shared<BluetoothAddress>(address));
+    static std::expected<std::unique_ptr<Protocol>, ParseError>
+    parse_raw_to_protocol(MultiaddrRawTokenizer &iter) {
+        auto a = iter.next().value();
+        BluetoothAddress address{try_unwrap(UUID::parse_raw(a))};
+        return std::unique_ptr(std::make_unique<BluetoothAddress>(address));
     }
 };
