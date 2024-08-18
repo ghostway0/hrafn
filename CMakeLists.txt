@@ -29,6 +29,7 @@ add_executable(doomday
     src/uuid.cpp
     src/multiaddr.cpp
     src/semantic_version.cpp
+    src/crypto.cpp
     ${PROTO_SRCS}
 )
 target_include_directories(doomday PRIVATE ${CMAKE_CURRENT_BINARY_DIR} third_party/SimpleBLE/simpleble/include)
