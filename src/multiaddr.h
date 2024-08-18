@@ -14,6 +14,7 @@
 #include <absl/strings/str_split.h>
 
 #include "error.h"
+#include "error_utils.h"
 #include "semantic_version.h"
 #include "uuid.h"
 
@@ -21,15 +22,6 @@ struct Multiaddr;
 struct Protocol;
 
 constexpr uint32_t kUUIDSize = 32;
-
-#define try_unwrap(x) \
-    ({ \
-        auto _x = x; \
-        if (!_x.has_value()) { \
-            return std::unexpected(_x.error()); \
-        } \
-        _x.value(); \
-    })
 
 struct Protocol {
     std::string name;

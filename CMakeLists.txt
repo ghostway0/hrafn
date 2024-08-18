@@ -31,7 +31,7 @@ add_executable(doomday
     src/semantic_version.cpp
     ${PROTO_SRCS}
 )
-target_include_directories(doomday PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
+target_include_directories(doomday PRIVATE ${CMAKE_CURRENT_BINARY_DIR} third_party/SimpleBLE/simpleble/include)
 
 target_include_directories(doomday PRIVATE
     ${PROTO_HDRS}
@@ -70,4 +70,4 @@ else()
 endif()
 
 # Set general compiler flags
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -march=native -fno-exceptions")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -march=native") #  -fno-exceptions

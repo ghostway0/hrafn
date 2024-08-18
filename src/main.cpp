@@ -15,6 +15,7 @@
 #include <absl/crc/crc32c.h>
 #include <absl/log/globals.h>
 #include <absl/log/initialize.h>
+#include <absl/log/log.h>
 #include <absl/strings/escaping.h>
 #include <absl/strings/str_split.h>
 #include <asio.hpp>
@@ -23,6 +24,7 @@
 #include <sodium/crypto_hash_sha256.h>
 #include <sodium/crypto_sign.h>
 
+#include "error_utils.h"
 #include "messages.pb.h"
 #include "multiaddr.h"
 
@@ -31,24 +33,6 @@ constexpr uint32_t kHandshakeMessageMaxSize = 1024;
 constexpr time_t kHandshakeAcceptableTimeDrift = 32;
 constexpr uint32_t kPubkeySize = 32;
 constexpr uint32_t kPrivkeySize = 32;
-
-#define try_unwrap(x) \
-    ({ \
-        auto _x = x; \
-        if (!_x.has_value()) { \
-            return std::unexpected(_x.error()); \
-        } \
-        _x.value(); \
-    })
-
-#define try_unwrap_or_error(x, err) \
-    ({ \
-        auto _x = x; \
-        if (!_x.has_value()) { \
-            co_return std::unexpected(err); \
-        } \
-        _x.value(); \
-    })
 
 class Pubkey {
 public:
@@ -365,7 +349,7 @@ Connection::negotiate(
         auto handshake_or = co_await stream_read_type<doomday::HandshakeMessage,
                 doomday::HandshakeMessage,
                 kHandshakeMessageMaxSize>(stream);
-        try_unwrap_or_error(handshake_or, HandshakeError::InvalidFormat);
+        co_try_unwrap_or(handshake_or, HandshakeError::InvalidFormat);
     });
 
     time_t timestamp = time(nullptr);
