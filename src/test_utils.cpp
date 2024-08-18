@@ -52,6 +52,12 @@ TEST_CASE("Semver parse/to_string") {
     CHECK(semver.has_value());
 
     CHECK_EQ(semver.value(), SemanticVersion{1, 2, 3});
+
+    SUBCASE("Comparison") {
+        CHECK(SemanticVersion{1, 2, 3} == SemanticVersion{1, 2, 3});
+        CHECK(SemanticVersion{2, 2, 3} > SemanticVersion{1, 2, 3});
+        CHECK(SemanticVersion{2, 2, 3} > SemanticVersion{1, 3, 4});
+    }
 }
 
 TEST_CASE("Multiaddr parse/to_string") {
