@@ -25,11 +25,11 @@ Keypair Keypair::generate_from(
     };
 }
 
-Pubkey::Pubkey(doomday::Ed25519FieldPoint const &field_point) : bytes_{} {
-    std::copy(field_point.limbs().begin(),
-            field_point.limbs().end(),
-            bytes_.begin());
-}
+// Pubkey::Pubkey(doomday::Ed25519FieldPoint const &field_point) : bytes_{} {
+//     std::copy(field_point.limbs().begin(),
+//             field_point.limbs().end(),
+//             bytes_.begin());
+// }
 
 std::optional<Pubkey> Pubkey::from_base64(std::string_view base64) {
     std::string decoded;
@@ -38,14 +38,14 @@ std::optional<Pubkey> Pubkey::from_base64(std::string_view base64) {
         return std::nullopt;
     }
 
-    std::array<uint8_t, kPrivkeySize> bytes{};
+    std::array<uint8_t, kPubkeySize> bytes{};
     std::copy(decoded.begin(), decoded.end(), bytes.begin());
 
     return Pubkey{std::move(bytes)};
 }
 
-bool Pubkey::verify(
-        absl::Span<uint8_t const> bytes, absl::Span<uint8_t const> signature) const {
+bool Pubkey::verify(absl::Span<uint8_t const> bytes,
+        absl::Span<uint8_t const> signature) const {
     return crypto_sign_verify_detached(
                    signature.data(), bytes.data(), bytes.size(), bytes_.data())
             == 0;
@@ -107,12 +107,12 @@ Privkey::Privkey(std::array<uint8_t, kPrivkeySize> &&bytes) : bytes_{bytes} {
     std::fill(bytes.begin(), bytes.end(), 0);
 }
 
-Privkey::Privkey(doomday::Ed25519FieldPoint &&field_point) : bytes_{} {
-    std::copy(field_point.limbs().begin(),
-            field_point.limbs().end(),
-            bytes_.begin());
-    // TODO(): zero out field_point
-}
+// Privkey::Privkey(doomday::Ed25519FieldPoint &&field_point) : bytes_{} {
+//     std::copy(field_point.limbs().begin(),
+//             field_point.limbs().end(),
+//             bytes_.begin());
+//     // TODO(): zero out field_point
+// }
 
 Privkey::Privkey(Privkey &&other) noexcept : bytes_{} {
     std::copy(bytes_.begin(), bytes_.end(), bytes_.begin());
@@ -134,7 +134,7 @@ std::optional<Privkey> Privkey::from_base64(std::string_view base64) {
 }
 
 std::optional<std::vector<uint8_t>> Privkey::decrypt(
-        std::span<uint8_t> ciphertext) {
+        std::span<uint8_t> ciphertext) const {
     std::vector<uint8_t> message(ciphertext.size() - crypto_box_SEALBYTES);
     if (crypto_box_seal_open(message.data(),
                 ciphertext.data(),
@@ -146,4 +146,14 @@ std::optional<std::vector<uint8_t>> Privkey::decrypt(
     }
 
     return message;
+}
+
+Signature Privkey::sign(std::span<uint8_t> message) const {
+    std::array<uint8_t, kSignatureSize> signature{};
+    crypto_sign_detached(signature.data(),
+            nullptr,
+            message.data(),
+            message.size(),
+            bytes_.data());
+    return Signature{signature};
 }

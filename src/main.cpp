@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <array>
 #include <cstdint>
 #include <ctime>
 #include <cwchar>
@@ -23,11 +24,11 @@
 #include <sodium/crypto_sign.h>
 #include <spdlog/spdlog.h>
 
-#include "crc64.h"
-#include "crypto.h"
-#include "error_utils.h"
+#include "utils/error_utils.h"
+#include "crypto/crc64.h"
+#include "crypto/crypto.h"
+#include "utils/multiaddr.h"
 #include "messages.pb.h"
-#include "multiaddr.h"
 
 constexpr uint8_t kVersion = 42;
 constexpr uint32_t kHandshakeMessageMaxSize = 1024;
@@ -100,97 +101,106 @@ struct Connection {
             std::unique_ptr<Stream> stream, std::optional<Pubkey> pubkey);
 };
 
-struct PubkeyAndSignature {
-    Pubkey pubkey;
-    std::array<uint8_t, kSignatureSize> signature;
-};
+
+    // bool verify() const {
+    //     std::vector<uint8_t> data_to_verify{};
+
+    //     auto flags_bytes = std::span(&flags, 1);
+    //     data_to_verify.insert(
+    //             data_to_verify.end(), flags_bytes.begin(), flags_bytes.end());
+
+    //     auto timestamp_bytes = std::span(&timestamp, 1);
+    //     data_to_verify.insert(data_to_verify.end(),
+    //             timestamp_bytes.begin(),
+    //             timestamp_bytes.end());
+
+    //     if (pubkey_and_signature) {
+    //         Pubkey const &pubkey = pubkey_and_signature.value().pubkey;
+    //         std::array<uint8_t, kSignatureSize> const &signature =
+    //                 pubkey_and_signature.value().signature;
+
+    //         auto const &pubkey_data =
+    //                 pubkey_and_signature.value().pubkey.data();
+    //         data_to_verify.insert(data_to_verify.end(),
+    //                 pubkey_data.begin(),
+    //                 pubkey_data.end());
+
+    //         bool signature_valid = pubkey.verify(
+    //                 std::span<uint8_t const>(data_to_verify), signature);
+
+    //         if (!signature_valid) {
+    //             return false;
+    //         }
+    //     }
+
+    //     uint64_t computed_checksum =
+    //             crc64(std::span<uint8_t const>(data_to_verify));
+
+    //     return computed_checksum == checksum;
+    // }
+
+// TODO(ghostway): I think I should have a SignedMessage message in the protobuf.
+
+// protocol:
+// 1. handshake:
+// - peer id
+// - timestamp
+// - checksum
+// - flags?
+// 2. stream of messages:
+// messages should be pretty much strip down as much as possible
+// message header have:
+// - timestamp
+// - checksum
+// - (bloom) filter?
+// then bytes
+// the inner messages structure:
+// - sender
+// - signature (OTR?) or should this be in an encrypted header?
+// - ratchet slot?
+// - associated id (full messages might be split across multiple small messages)
 
 struct HandshakeMessage {
-    uint32_t version;
     uint32_t flags;
-    uint64_t timestamp;
-    std::optional<PubkeyAndSignature> pubkey_and_signature;
-    uint32_t checksum;
+    Pubkey pubkey;
+    Signature signature;
+    time_t timestamp;
+    chksum_t checksum;
 
-    doomday::HandshakeMessage pack() const {
-        doomday::HandshakeMessage handshake;
+    static HandshakeMessage generate(Keypair const &keypair) {
+        HandshakeMessage message{
+                .flags = 0,
+                .pubkey = keypair.pubkey,
+                .timestamp = std::time(nullptr),
+        };
 
-        handshake.set_flags(flags);
-        handshake.set_timestamp(timestamp);
-        handshake.set_checksum(0);
-        handshake.set_version(kVersion);
+        std::vector<uint8_t> data_to_sign{};
+        auto flags_bytes = std::span(&message.flags, 1);
+        data_to_sign.insert(
+                data_to_sign.end(), flags_bytes.begin(), flags_bytes.end());
 
-        if (pubkey_and_signature) {
-            auto *data =
-                    handshake.mutable_pubkey()->mutable_limbs()->mutable_data();
-            std::copy(pubkey_and_signature.value().pubkey.data().begin(),
-                    pubkey_and_signature.value().pubkey.data().end(),
-                    data);
-        }
-
-        return handshake;
-    }
-
-    static std::optional<HandshakeMessage> unpack(
-            doomday::HandshakeMessage const &handshake) {
-        if (handshake.version() != kVersion) {
-            return std::nullopt;
-        }
-
-        HandshakeMessage result;
-        result.flags = handshake.flags();
-        result.timestamp = handshake.timestamp();
-
-        if (handshake.has_pubkey()) {
-            // result.pubkey = Pubkey{handshake.pubkey().limbs()};
-        }
-
-        return result;
-    }
-
-    bool verify() const {
-        std::vector<uint8_t> data_to_verify{};
-
-        auto flags_bytes = std::span(&flags, 1);
-        data_to_verify.insert(
-                data_to_verify.end(), flags_bytes.begin(), flags_bytes.end());
-
-        auto timestamp_bytes = std::span(&timestamp, 1);
-        data_to_verify.insert(data_to_verify.end(),
+        auto timestamp_bytes = std::span(&message.timestamp, 1);
+        data_to_sign.insert(data_to_sign.end(),
                 timestamp_bytes.begin(),
                 timestamp_bytes.end());
 
-        if (pubkey_and_signature) {
-            Pubkey const &pubkey = pubkey_and_signature.value().pubkey;
-            std::array<uint8_t, kSignatureSize> const &signature =
-                    pubkey_and_signature.value().signature;
+        auto const &pubkey_data = message.pubkey.data();
+        data_to_sign.insert(
+                data_to_sign.end(), pubkey_data.begin(), pubkey_data.end());
 
-            auto const &pubkey_data =
-                    pubkey_and_signature.value().pubkey.data();
-            data_to_verify.insert(data_to_verify.end(),
-                    pubkey_data.begin(),
-                    pubkey_data.end());
+        message.signature = Signature{keypair.privkey.sign(data_to_sign)};
 
-            bool signature_valid = pubkey.verify(
-                    std::span<uint8_t const>(data_to_verify), signature);
+        message.checksum = crc64(std::span<uint8_t const>(data_to_sign));
 
-            if (!signature_valid) {
-                return false;
-            }
-        }
-
-        uint64_t computed_checksum =
-                crc64(std::span<uint8_t const>(data_to_verify));
-
-        return computed_checksum == checksum;
+        return message;
     }
 };
 
 std::optional<HandshakeError> validate_handshake(
         HandshakeMessage const &handshake, uint64_t timestamp) {
-    if (handshake.version != kVersion) {
-        return HandshakeError::InvalidVersion;
-    }
+    // if (handshake.version != kVersion) {
+    //     return HandshakeError::InvalidVersion;
+    // }
 
     // if (absl::crc32c_t{handshake.checksum()}
     //         != absl::ComputeCrc32c()) {
@@ -203,9 +213,9 @@ std::optional<HandshakeError> validate_handshake(
     }
 
     // TODO(ghostway): cleanup
-    if (!handshake.verify()) {
-        return HandshakeError::InvalidChecksum;
-    }
+    // if (!handshake.verify()) {
+    //     return HandshakeError::InvalidChecksum;
+    // }
 
     return std::nullopt;
 }
@@ -213,22 +223,21 @@ std::optional<HandshakeError> validate_handshake(
 asio::awaitable<std::expected<Connection, HandshakeError>>
 Connection::negotiate(
         std::unique_ptr<Stream> stream, std::optional<Pubkey> pubkey) {
-    co_await stream_write_type<doomday::HandshakeMessage>(stream,
-            HandshakeMessage{0, static_cast<uint64_t>(time(nullptr)), pubkey}
-                    .pack());
+    // co_await stream_write_type<doomday::HandshakeMessage>(
+    //         stream, HandshakeMessage{.flags = 0, .pubkey = pubkey}.pack());
 
-    auto handshake = ({
-        auto handshake_or = co_await stream_read_type<doomday::HandshakeMessage,
-                doomday::HandshakeMessage,
-                kHandshakeMessageMaxSize>(stream);
-        co_try_unwrap_or(handshake_or, HandshakeError::InvalidFormat);
-    });
+    // auto handshake = ({
+    //     auto handshake_or = co_await stream_read_type<doomday::HandshakeMessage,
+    //             doomday::HandshakeMessage,
+    //             kHandshakeMessageMaxSize>(stream);
+    //     co_try_unwrap_or(handshake_or, HandshakeError::InvalidFormat);
+    // });
 
-    if (std::optional<HandshakeError> validation_error =
-                    validate_handshake(HandshakeMessage::unpack(handshake).value(), time(nullptr));
-            validation_error.has_value()) {
-        co_return std::unexpected(validation_error.value());
-    }
+    // if (std::optional<HandshakeError> validation_error = validate_handshake(
+    //             HandshakeMessage::unpack(handshake).value(), time(nullptr));
+    //         validation_error.has_value()) {
+    //     co_return std::unexpected(validation_error.value());
+    // }
 
     co_return Connection{.stream = std::move(stream)};
 }

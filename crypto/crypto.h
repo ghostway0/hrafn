@@ -1,24 +1,23 @@
 #include <algorithm>
 #include <array>
 #include <cstdint>
+#include <vector>
 #include <optional>
 
-#include <absl/random/random.h>
+#include <absl/strings/str_format.h>
 #include <absl/strings/escaping.h>
+#include <absl/types/span.h>
 #include <sodium.h>
-#include <vector>
 
-#include "messages.pb.h"
+constexpr uint32_t kPubkeySize = crypto_sign_PUBLICKEYBYTES;
+constexpr uint32_t kPrivkeySize = crypto_sign_SECRETKEYBYTES;
+constexpr uint32_t kSignatureSize = crypto_sign_BYTES;
 
-constexpr uint32_t kPubkeySize = 32;
-constexpr uint32_t kPrivkeySize = 32;
-constexpr uint32_t kSignatureSize = 32;
+#define chksum_t uint64_t
 
 class Pubkey {
 public:
     explicit Pubkey(std::array<uint8_t, kPubkeySize> bytes) : bytes_{bytes} {}
-
-    explicit Pubkey(doomday::Ed25519FieldPoint const &field_point);
 
     static std::optional<Pubkey> from_base64(std::string_view base64);
 
@@ -44,6 +43,10 @@ private:
     std::array<uint8_t, kPubkeySize> bytes_;
 };
 
+struct Signature {
+    std::array<uint8_t, kSignatureSize> bytes;
+};
+
 struct PeerId {
     std::vector<uint8_t> bytes;
 
@@ -60,8 +63,6 @@ class Privkey {
 public:
     explicit Privkey(std::array<uint8_t, kPrivkeySize> &&bytes);
 
-    explicit Privkey(doomday::Ed25519FieldPoint &&field_point);
-
     Privkey(Privkey &&other) noexcept;
 
     Privkey(Privkey const &) = delete;
@@ -72,17 +73,10 @@ public:
 
     std::array<uint8_t, kPrivkeySize> const &data() const { return bytes_; }
 
-    std::vector<uint8_t> sign(std::span<uint8_t> message) {
-        std::vector<uint8_t> signature(crypto_sign_BYTES);
-        crypto_sign_detached(signature.data(),
-                nullptr,
-                message.data(),
-                message.size(),
-                bytes_.data());
-        return signature;
-    }
+    Signature sign(std::span<uint8_t> message) const;
 
-    std::optional<std::vector<uint8_t>> decrypt(std::span<uint8_t> ciphertext);
+    std::optional<std::vector<uint8_t>> decrypt(
+            std::span<uint8_t> ciphertext) const;
 
     bool operator<=>(Privkey const &other) = delete;
 
