@@ -1,5 +1,30 @@
 #include "crypto.h"
 
+Keypair Keypair::generate() {
+    std::array<uint8_t, kPrivkeySize> privkey{};
+    std::array<uint8_t, kPubkeySize> pubkey{};
+
+    crypto_sign_keypair(pubkey.data(), privkey.data());
+
+    return Keypair{
+            Pubkey{std::move(pubkey)},
+            Privkey{std::move(privkey)},
+    };
+}
+
+Keypair Keypair::generate_from(
+        std::array<uint8_t, crypto_sign_SEEDBYTES> seed) {
+    std::array<uint8_t, kPrivkeySize> privkey{};
+    std::array<uint8_t, kPubkeySize> pubkey{};
+
+    crypto_sign_seed_keypair(pubkey.data(), privkey.data(), seed.data());
+
+    return Keypair{
+            Pubkey{std::move(pubkey)},
+            Privkey{std::move(privkey)},
+    };
+}
+
 Pubkey::Pubkey(doomday::Ed25519FieldPoint const &field_point) : bytes_{} {
     std::copy(field_point.limbs().begin(),
             field_point.limbs().end(),
@@ -20,7 +45,7 @@ std::optional<Pubkey> Pubkey::from_base64(std::string_view base64) {
 }
 
 bool Pubkey::verify(
-        absl::Span<uint8_t const> bytes, absl::Span<uint8_t const> signature) {
+        absl::Span<uint8_t const> bytes, absl::Span<uint8_t const> signature) const {
     return crypto_sign_verify_detached(
                    signature.data(), bytes.data(), bytes.size(), bytes_.data())
             == 0;

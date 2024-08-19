@@ -34,10 +34,6 @@ add_executable(doomday
 )
 target_include_directories(doomday PRIVATE ${CMAKE_CURRENT_BINARY_DIR} third_party/SimpleBLE/simpleble/include)
 
-target_include_directories(doomday PRIVATE
-    ${PROTO_HDRS}
-)
-
 target_link_libraries(doomday PRIVATE
     asio::asio
     protobuf::libprotobuf
@@ -54,6 +50,7 @@ add_executable(test_utils
     src/multiaddr.cpp
 )
 target_link_libraries(test_utils PRIVATE doctest::doctest protobuf::libprotobuf absl::strings spdlog::spdlog fmt::fmt)
+target_include_directories(test_utils PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
 
 # set_property(TARGET test_utils PROPERTY CXX_INCLUDE_WHAT_YOU_USE ${iwyu_path})
 

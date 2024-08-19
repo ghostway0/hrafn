@@ -8,6 +8,7 @@
 #include "multiaddr.h"
 #include "semantic_version.h"
 #include "uuid.h"
+// #include "crypto.h"
 
 TEST_CASE("UUID parse/to_string") {
     SUBCASE("Empty") {
@@ -90,3 +91,12 @@ TEST_CASE("Multiaddr parse/to_string") {
                 "/btu/123e4567-e89b-12d3-a456-426614174000");
     }
 }
+
+// TEST_CASE("Crypto") {
+//     Keypair keypair = generate();
+
+//     std::vector<uint8_t> message{0x13, 0x37};
+
+//     std::vector<uint8_t> signature = keypair.privkey.sign(message);
+//     CHECK(keypair.pubkey.verify(message, signature));
+// }

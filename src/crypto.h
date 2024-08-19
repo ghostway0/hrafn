@@ -3,13 +3,16 @@
 #include <cstdint>
 #include <optional>
 
+#include <absl/random/random.h>
 #include <absl/strings/escaping.h>
 #include <sodium.h>
+#include <vector>
 
 #include "messages.pb.h"
 
 constexpr uint32_t kPubkeySize = 32;
 constexpr uint32_t kPrivkeySize = 32;
+constexpr uint32_t kSignatureSize = 32;
 
 class Pubkey {
 public:
@@ -22,7 +25,7 @@ public:
     std::array<uint8_t, kPubkeySize> const &data() const { return bytes_; }
 
     bool verify(absl::Span<uint8_t const> bytes,
-            absl::Span<uint8_t const> signature);
+            absl::Span<uint8_t const> signature) const;
 
     std::string to_string() const;
 
@@ -85,4 +88,12 @@ public:
 
 private:
     std::array<uint8_t, kPrivkeySize> bytes_;
+};
+
+struct Keypair {
+    Pubkey pubkey;
+    Privkey privkey;
+
+    static Keypair generate();
+    Keypair generate_from(std::array<uint8_t, crypto_sign_SEEDBYTES>);
 };

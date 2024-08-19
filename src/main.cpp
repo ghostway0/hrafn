@@ -3,11 +3,9 @@
 #include <ctime>
 #include <cwchar>
 #include <expected>
-#include <fmt/ranges.h>
 #include <memory>
 #include <optional>
 #include <span>
-#include <spdlog/spdlog.h>
 #include <variant>
 #include <vector>
 
@@ -19,10 +17,13 @@
 #include <absl/strings/str_split.h>
 #include <asio.hpp>
 #include <asio/experimental/channel.hpp>
+#include <fmt/ranges.h>
 #include <sodium/crypto_box.h>
 #include <sodium/crypto_hash_sha256.h>
 #include <sodium/crypto_sign.h>
+#include <spdlog/spdlog.h>
 
+#include "crc64.h"
 #include "crypto.h"
 #include "error_utils.h"
 #include "messages.pb.h"
@@ -50,7 +51,7 @@ std::vector<uint8_t> serialize_to_bytes(S const *obj) {
 
 template<typename T, typename S, size_t kSize>
 asio::awaitable<std::expected<S, asio::error_code>> stream_read_type(
-        std::shared_ptr<Stream> stream) {
+        std::unique_ptr<Stream> &stream) {
     std::vector<uint8_t> buffer(kSize);
     co_await stream->read(buffer);
 
@@ -66,7 +67,7 @@ asio::awaitable<std::expected<S, asio::error_code>> stream_read_type(
 
 template<typename T, typename S>
 asio::awaitable<std::expected<void, asio::error_code>> stream_write_type(
-        std::shared_ptr<Stream> stream, S val) {
+        std::unique_ptr<Stream> &stream, S val) {
     std::vector<uint8_t> bytes = serialize_to_bytes<T>(&val);
     co_return co_await stream->write(bytes);
 }
@@ -92,17 +93,24 @@ enum class HandshakeError {
 };
 
 struct Connection {
-    std::shared_ptr<Stream> stream;
+    std::unique_ptr<Stream> stream;
     std::optional<Contact> contact = std::nullopt;
 
     static asio::awaitable<std::expected<Connection, HandshakeError>> negotiate(
-            std::shared_ptr<Stream> stream, std::optional<Pubkey> pubkey);
+            std::unique_ptr<Stream> stream, std::optional<Pubkey> pubkey);
+};
+
+struct PubkeyAndSignature {
+    Pubkey pubkey;
+    std::array<uint8_t, kSignatureSize> signature;
 };
 
 struct HandshakeMessage {
+    uint32_t version;
     uint32_t flags;
     uint64_t timestamp;
-    std::optional<Pubkey> pubkey;
+    std::optional<PubkeyAndSignature> pubkey_and_signature;
+    uint32_t checksum;
 
     doomday::HandshakeMessage pack() const {
         doomday::HandshakeMessage handshake;
@@ -112,53 +120,91 @@ struct HandshakeMessage {
         handshake.set_checksum(0);
         handshake.set_version(kVersion);
 
-        if (pubkey) {
+        if (pubkey_and_signature) {
             auto *data =
                     handshake.mutable_pubkey()->mutable_limbs()->mutable_data();
-            std::copy(pubkey->data().begin(), pubkey->data().end(), data);
+            std::copy(pubkey_and_signature.value().pubkey.data().begin(),
+                    pubkey_and_signature.value().pubkey.data().end(),
+                    data);
         }
 
         return handshake;
     }
+
+    static std::optional<HandshakeMessage> unpack(
+            doomday::HandshakeMessage const &handshake) {
+        if (handshake.version() != kVersion) {
+            return std::nullopt;
+        }
+
+        HandshakeMessage result;
+        result.flags = handshake.flags();
+        result.timestamp = handshake.timestamp();
+
+        if (handshake.has_pubkey()) {
+            // result.pubkey = Pubkey{handshake.pubkey().limbs()};
+        }
+
+        return result;
+    }
+
+    bool verify() const {
+        std::vector<uint8_t> data_to_verify{};
+
+        auto flags_bytes = std::span(&flags, 1);
+        data_to_verify.insert(
+                data_to_verify.end(), flags_bytes.begin(), flags_bytes.end());
+
+        auto timestamp_bytes = std::span(&timestamp, 1);
+        data_to_verify.insert(data_to_verify.end(),
+                timestamp_bytes.begin(),
+                timestamp_bytes.end());
+
+        if (pubkey_and_signature) {
+            Pubkey const &pubkey = pubkey_and_signature.value().pubkey;
+            std::array<uint8_t, kSignatureSize> const &signature =
+                    pubkey_and_signature.value().signature;
+
+            auto const &pubkey_data =
+                    pubkey_and_signature.value().pubkey.data();
+            data_to_verify.insert(data_to_verify.end(),
+                    pubkey_data.begin(),
+                    pubkey_data.end());
+
+            bool signature_valid = pubkey.verify(
+                    std::span<uint8_t const>(data_to_verify), signature);
+
+            if (!signature_valid) {
+                return false;
+            }
+        }
+
+        uint64_t computed_checksum =
+                crc64(std::span<uint8_t const>(data_to_verify));
+
+        return computed_checksum == checksum;
+    }
 };
 
 std::optional<HandshakeError> validate_handshake(
-        doomday::HandshakeMessage const &received_handshake,
-        std::optional<Pubkey> const &pubkey,
-        uint64_t timestamp) {
-    if (received_handshake.version() != kVersion) {
+        HandshakeMessage const &handshake, uint64_t timestamp) {
+    if (handshake.version != kVersion) {
         return HandshakeError::InvalidVersion;
     }
 
-    std::string bytes = received_handshake.SerializeAsString();
+    // if (absl::crc32c_t{handshake.checksum()}
+    //         != absl::ComputeCrc32c()) {
+    //     return HandshakeError::InvalidChecksum;
+    // }
 
-    if (absl::crc32c_t{received_handshake.checksum()}
-            != absl::ComputeCrc32c(bytes)) {
-        return HandshakeError::InvalidChecksum;
-    }
-
-    auto received_timestamp = received_handshake.timestamp();
-    if (std::abs(static_cast<int64_t>(received_timestamp - timestamp))
+    if (std::abs(static_cast<int64_t>(handshake.timestamp - timestamp))
             > kHandshakeAcceptableTimeDrift) {
         return HandshakeError::InvalidTimestamp;
     }
 
-    if (pubkey) {
-        if (!received_handshake.has_pubkey()) {
-            return HandshakeError::InvalidPubkey;
-        }
-
-        Pubkey remote_pubkey{received_handshake.pubkey()};
-        std::string const &sig = received_handshake.signature();
-
-        absl::Span<uint8_t const> bytes_span{
-                reinterpret_cast<uint8_t const *>(bytes.data()), bytes.size()};
-        absl::Span<uint8_t const> sig_span{
-                reinterpret_cast<uint8_t const *>(sig.data()), sig.size()};
-
-        if (!remote_pubkey.verify(bytes_span, sig_span)) {
-            return HandshakeError::InvalidSignature;
-        }
+    // TODO(ghostway): cleanup
+    if (!handshake.verify()) {
+        return HandshakeError::InvalidChecksum;
     }
 
     return std::nullopt;
@@ -166,26 +212,25 @@ std::optional<HandshakeError> validate_handshake(
 
 asio::awaitable<std::expected<Connection, HandshakeError>>
 Connection::negotiate(
-        std::shared_ptr<Stream> stream, std::optional<Pubkey> pubkey) {
+        std::unique_ptr<Stream> stream, std::optional<Pubkey> pubkey) {
     co_await stream_write_type<doomday::HandshakeMessage>(stream,
             HandshakeMessage{0, static_cast<uint64_t>(time(nullptr)), pubkey}
                     .pack());
 
-    auto received_handshake = ({
+    auto handshake = ({
         auto handshake_or = co_await stream_read_type<doomday::HandshakeMessage,
                 doomday::HandshakeMessage,
                 kHandshakeMessageMaxSize>(stream);
         co_try_unwrap_or(handshake_or, HandshakeError::InvalidFormat);
     });
 
-    time_t timestamp = time(nullptr);
     if (std::optional<HandshakeError> validation_error =
-                    validate_handshake(received_handshake, pubkey, timestamp);
+                    validate_handshake(HandshakeMessage::unpack(handshake).value(), time(nullptr));
             validation_error.has_value()) {
         co_return std::unexpected(validation_error.value());
     }
 
-    co_return Connection{.stream = stream};
+    co_return Connection{.stream = std::move(stream)};
 }
 
 struct Message {
