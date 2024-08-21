@@ -5,13 +5,14 @@
 #include <cassert>
 #include <cctype>
 #include <expected>
+#include <optional>
 #include <stddef.h>
 #include <string>
 #include <string_view>
 
 #include "uuid.h"
 
-std::expected<UUID, ParseError> UUID::parse(std::string_view str) {
+std::optional<UUID> UUID::parse(std::string_view str) {
     std::string clean{};
     for (char c : str) {
         if (std::isalnum(c)) {
@@ -20,7 +21,7 @@ std::expected<UUID, ParseError> UUID::parse(std::string_view str) {
     }
 
     if (clean.size() != 32) {
-        return std::unexpected(ParseError::InvalidFormat);
+        return std::nullopt;
     }
 
     UUID uuid{};
@@ -30,7 +31,7 @@ std::expected<UUID, ParseError> UUID::parse(std::string_view str) {
         std::string byte_result;
 
         if (!absl::HexStringToBytes(byte_str, &byte_result)) {
-            return std::unexpected(ParseError::InvalidFormat);
+            return std::nullopt;
         }
 
         assert(byte_result.size() == 1);
@@ -40,9 +41,9 @@ std::expected<UUID, ParseError> UUID::parse(std::string_view str) {
     return uuid;
 }
 
-std::expected<UUID, ParseError> UUID::parse_raw(std::span<uint8_t> bytes) {
+std::optional<UUID> UUID::parse_raw(std::span<uint8_t> bytes) {
     if (bytes.size() != 16) {
-        return std::unexpected(ParseError::InvalidFormat);
+        return std::nullopt;
     }
 
     UUID uuid{};

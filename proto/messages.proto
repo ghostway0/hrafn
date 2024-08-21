@@ -1,6 +1,6 @@
 syntax = "proto3";
 
-package doomday;
+package hrafn;
 
 message Ed25519FieldPoint {
     repeated uint32 limbs = 1 [packed=true];

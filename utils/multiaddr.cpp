@@ -23,10 +23,10 @@ struct VectorCompare {
 };
 
 std::map<std::string_view,
-        std::function<std::expected<std::shared_ptr<Protocol>, ParseError>(
+        std::function<std::optional<std::shared_ptr<Protocol>>(
                 MultiaddrStringTokenizer &)>> const protocol_parsers = {
         {
-                "btu",
+                "btle",
                 BluetoothAddress::parse_to_protocol,
         },
         // {
@@ -36,18 +36,18 @@ std::map<std::string_view,
 };
 
 std::map<std::vector<uint8_t>,
-        std::function<std::expected<std::unique_ptr<Protocol>, ParseError>(
+        std::function<std::optional<std::unique_ptr<Protocol>>(
                 MultiaddrRawTokenizer &iter)>,
         VectorCompare> const raw_protocol_parsers = {
         {
-                encode_varint(150),
+                encode_varuint(150),
                 BluetoothAddress::parse_raw_to_protocol,
         },
 };
 
 } // namespace
 
-std::expected<Multiaddr, ParseError> Multiaddr::parse(std::string_view str) {
+std::optional<Multiaddr> Multiaddr::parse(std::string_view str) {
     Multiaddr multiaddr{};
     MultiaddrStringTokenizer tokenizer{str};
 
@@ -61,13 +61,13 @@ std::expected<Multiaddr, ParseError> Multiaddr::parse(std::string_view str) {
         if (auto protocol_parser = protocol_parsers.find(protocol);
                 protocol_parser != protocol_parsers.end()) {
             auto protocol_result =
-                    try_unwrap(protocol_parser->second(tokenizer));
+                    try_unwrap_optional(protocol_parser->second(tokenizer));
             multiaddr.protocols.push_back(protocol_result);
         } else if (tokenizer.is_done()) {
-            multiaddr.version = try_unwrap(SemanticVersion::parse(protocol));
+            multiaddr.version = try_unwrap_optional(SemanticVersion::parse(protocol));
             break;
         } else {
-            return std::unexpected(ParseError::InvalidFormat);
+            return std::nullopt;
         }
     }
 

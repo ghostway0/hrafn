@@ -138,8 +138,8 @@ struct HandshakeMessage {
         return message;
     }
 
-    doomday::HandshakeMessage proto() const {
-        doomday::HandshakeMessage message;
+    hrafn::HandshakeMessage proto() const {
+        hrafn::HandshakeMessage message;
         message.set_flags(flags);
         message.set_peer_id(peer_id.to_base64());
         return message;
@@ -153,8 +153,8 @@ Connection::negotiate(std::unique_ptr<Stream> stream, Pubkey const &pubkey) {
     co_await stream->write(&message);
 
     auto handshake = ({
-        auto handshake_or = co_await stream_read_type<doomday::HandshakeMessage,
-                doomday::HandshakeMessage,
+        auto handshake_or = co_await stream_read_type<hrafn::HandshakeMessage,
+                hrafn::HandshakeMessage,
                 kHandshakeMessageMaxSize>(stream);
         co_try_unwrap_or(handshake_or, HandshakeError::InvalidFormat);
     });
@@ -165,7 +165,7 @@ Connection::negotiate(std::unique_ptr<Stream> stream, Pubkey const &pubkey) {
 struct Message {
     std::vector<uint8_t> data;
     // should use an internal header that packs into it
-    doomday::MessageHeader header;
+    hrafn::MessageHeader header;
     std::vector<Pubkey> recipients;
 };
 

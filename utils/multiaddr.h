@@ -17,6 +17,7 @@
 #include "error_utils.h"
 #include "semantic_version.h"
 #include "uuid.h"
+#include "varint.h"
 
 struct Multiaddr;
 struct Protocol;
@@ -39,7 +40,7 @@ struct Multiaddr {
     std::vector<uint8_t> identifier;
     std::optional<SemanticVersion> version;
 
-    static std::expected<Multiaddr, ParseError> parse(std::string_view str);
+    static std::optional<Multiaddr> parse(std::string_view str);
 
     std::string to_string() const;
 
@@ -70,25 +71,47 @@ private:
 
 class MultiaddrRawTokenizer {
 public:
-    explicit MultiaddrRawTokenizer(std::vector<uint8_t> str) {}
+    explicit MultiaddrRawTokenizer(std::vector<uint8_t> &&bytes)
+        : bytes_{bytes} {}
 
-    std::optional<std::vector<uint8_t>> next() {
-        // if (current_ != tokens_.end()) {
-        //     return *current_++;
-        // }
-        return std::nullopt;
+    template<typename T>
+    std::optional<T> read() {
+        if (current_ + sizeof(T) >= bytes_.size()) {
+            return std::nullopt;
+        }
+
+        T *val = reinterpret_cast<T *>(&bytes_[current_]);
+        current_ += sizeof(T);
+        return *val;
+    }
+
+    std::optional<uint64_t> read_uleb128() {
+        auto [value, read] = try_unwrap_optional(decode_varuint(
+                {bytes_.begin() + current_, bytes_.size() - current_}));
+        current_ += read;
+        return value;
+    }
+
+    std::optional<uint64_t> uint64() { return read<uint64_t>(); }
+    std::optional<uint32_t> uint32() { return read<uint32_t>(); }
+    std::optional<uint32_t> varuint32() {
+        uint64_t value = try_unwrap_optional(read_uleb128());
+
+        return value < UINT32_MAX
+                ? std::make_optional(static_cast<uint32_t>(value))
+                : std::nullopt;
     }
 
 private:
-    // std::vector<std::uint8_t> tokens_;
-    // std::vector<std::string_view>::iterator current_;
+    std::vector<uint8_t> bytes_;
+    size_t current_ = 0;
 };
 
 struct BluetoothAddress : Protocol {
     UUID address;
 
     explicit BluetoothAddress(UUID addr)
-        : Protocol{"btu", 'b'}, address{addr} {}
+        : Protocol{"btle", 'b'}, address{addr} {}
 
     std::string to_string() const override { return address.to_string(); }
 
@@ -96,16 +119,16 @@ struct BluetoothAddress : Protocol {
         return {address.bytes.begin(), address.bytes.end()};
     }
 
-    static std::expected<std::unique_ptr<Protocol>, ParseError>
-    parse_to_protocol(MultiaddrStringTokenizer &iter) {
-        BluetoothAddress address{try_unwrap(UUID::parse(iter.next().value()))};
+    static std::optional<std::unique_ptr<Protocol>> parse_to_protocol(
+            MultiaddrStringTokenizer &iter) {
+        BluetoothAddress address{
+                try_unwrap_optional(UUID::parse(iter.next().value()))};
         return std::unique_ptr(std::make_unique<BluetoothAddress>(address));
     }
 
-    static std::expected<std::unique_ptr<Protocol>, ParseError>
-    parse_raw_to_protocol(MultiaddrRawTokenizer &iter) {
-        auto a = iter.next().value();
-        BluetoothAddress address{try_unwrap(UUID::parse_raw(a))};
+    static std::optional<std::unique_ptr<Protocol>> parse_raw_to_protocol(
+            MultiaddrRawTokenizer &tokenizer) {
+        BluetoothAddress address{try_unwrap_optional(UUID::parse_raw({}))};
         return std::unique_ptr(std::make_unique<BluetoothAddress>(address));
     }
 };
