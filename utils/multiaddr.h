@@ -9,6 +9,7 @@
 #include <span>
 #include <string>
 #include <string_view>
+#include <type_traits>
 #include <vector>
 
 #include <absl/strings/str_split.h>
@@ -77,7 +78,9 @@ public:
     explicit MultiaddrRawTokenizer(std::span<uint8_t> bytes) : bytes_{bytes} {}
 
     template<typename T>
-    std::optional<T> read() {
+    std::optional<T> read()
+    requires std::is_trivially_copyable_v<T>
+    {
         if (current_ + sizeof(T) >= bytes_.size()) {
             return std::nullopt;
         }
