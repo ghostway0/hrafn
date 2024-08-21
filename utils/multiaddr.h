@@ -13,7 +13,6 @@
 
 #include <absl/strings/str_split.h>
 
-#include "error.h"
 #include "error_utils.h"
 #include "semantic_version.h"
 #include "uuid.h"
@@ -36,11 +35,12 @@ struct Protocol {
 };
 
 struct Multiaddr {
-    std::vector<std::shared_ptr<Protocol>> protocols;
+    std::vector<std::unique_ptr<Protocol>> protocols;
     std::vector<uint8_t> identifier;
     std::optional<SemanticVersion> version;
 
     static std::optional<Multiaddr> parse(std::string_view str);
+    static std::optional<Multiaddr> parse_raw(std::span<uint8_t> bytes);
 
     std::string to_string() const;
 
@@ -71,8 +71,10 @@ private:
 
 class MultiaddrRawTokenizer {
 public:
-    explicit MultiaddrRawTokenizer(std::vector<uint8_t> &&bytes)
+    explicit MultiaddrRawTokenizer(std::vector<uint8_t> bytes)
         : bytes_{bytes} {}
+
+    explicit MultiaddrRawTokenizer(std::span<uint8_t> bytes) : bytes_{bytes} {}
 
     template<typename T>
     std::optional<T> read() {
@@ -92,6 +94,16 @@ public:
         return value;
     }
 
+    std::optional<std::span<uint8_t>> read_bytes(size_t count) {
+        if (current_ + count > bytes_.size()) {
+            return std::nullopt;
+        }
+
+        std::span<uint8_t> result = {bytes_.begin() + current_, count};
+        current_ += count;
+        return result;
+    }
+
     std::optional<uint64_t> uint64() { return read<uint64_t>(); }
     std::optional<uint32_t> uint32() { return read<uint32_t>(); }
     std::optional<uint32_t> varuint32() {
@@ -103,7 +115,7 @@ public:
     }
 
 private:
-    std::vector<uint8_t> bytes_;
+    std::span<uint8_t> bytes_;
     size_t current_ = 0;
 };
 
@@ -128,7 +140,11 @@ struct BluetoothAddress : Protocol {
 
     static std::optional<std::unique_ptr<Protocol>> parse_raw_to_protocol(
             MultiaddrRawTokenizer &tokenizer) {
-        BluetoothAddress address{try_unwrap_optional(UUID::parse_raw({}))};
+        std::span<uint8_t> bytes =
+                try_unwrap_optional(tokenizer.read_bytes(UUID::kSize));
+
+        BluetoothAddress address{try_unwrap_optional(UUID::parse_raw(bytes))};
+
         return std::unique_ptr(std::make_unique<BluetoothAddress>(address));
     }
 };

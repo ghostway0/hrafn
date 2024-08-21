@@ -1,7 +1,10 @@
 #include <algorithm>
+#include <cstdint>
 #include <expected>
 #include <functional>
 #include <map>
+#include <optional>
+#include <span>
 #include <string_view>
 #include <utility>
 #include <vector>
@@ -14,16 +17,8 @@
 
 namespace {
 
-struct VectorCompare {
-    bool operator()(std::vector<uint8_t> const &lhs,
-            std::vector<uint8_t> const &rhs) const {
-        return std::lexicographical_compare(
-                lhs.begin(), lhs.end(), rhs.begin(), rhs.end());
-    }
-};
-
 std::map<std::string_view,
-        std::function<std::optional<std::shared_ptr<Protocol>>(
+        std::function<std::optional<std::unique_ptr<Protocol>>(
                 MultiaddrStringTokenizer &)>> const protocol_parsers = {
         {
                 "btle",
@@ -35,12 +30,11 @@ std::map<std::string_view,
         // },
 };
 
-std::map<std::vector<uint8_t>,
+std::map<uint64_t,
         std::function<std::optional<std::unique_ptr<Protocol>>(
-                MultiaddrRawTokenizer &iter)>,
-        VectorCompare> const raw_protocol_parsers = {
+                MultiaddrRawTokenizer &iter)>> const raw_protocol_parsers = {
         {
-                encode_varuint(150),
+                150,
                 BluetoothAddress::parse_raw_to_protocol,
         },
 };
@@ -62,10 +56,33 @@ std::optional<Multiaddr> Multiaddr::parse(std::string_view str) {
                 protocol_parser != protocol_parsers.end()) {
             auto protocol_result =
                     try_unwrap_optional(protocol_parser->second(tokenizer));
-            multiaddr.protocols.push_back(protocol_result);
+
+            multiaddr.protocols.push_back(std::move(protocol_result));
         } else if (tokenizer.is_done()) {
-            multiaddr.version = try_unwrap_optional(SemanticVersion::parse(protocol));
+            multiaddr.version =
+                    try_unwrap_optional(SemanticVersion::parse(protocol));
             break;
+        } else {
+            return std::nullopt;
+        }
+    }
+
+    return multiaddr;
+}
+
+std::optional<Multiaddr> Multiaddr::parse_raw(std::span<uint8_t> bytes) {
+    Multiaddr multiaddr{};
+    MultiaddrRawTokenizer tokenizer{bytes};
+
+    while (auto protocol_opt = tokenizer.read_uleb128()) {
+        uint64_t protocol = protocol_opt.value();
+
+        if (auto protocol_parser = raw_protocol_parsers.find(protocol);
+                protocol_parser != raw_protocol_parsers.end()) {
+            auto protocol_result =
+                    try_unwrap_optional(protocol_parser->second(tokenizer));
+
+            multiaddr.protocols.push_back(std::move(protocol_result));
         } else {
             return std::nullopt;
         }

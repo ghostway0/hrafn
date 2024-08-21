@@ -9,7 +9,9 @@
 #include <string_view>
 
 struct UUID {
-    std::array<uint8_t, 16> bytes;
+    static constexpr size_t kSize = 16;
+
+    std::array<uint8_t, kSize> bytes;
 
     static std::optional<UUID> parse(std::string_view str);
     static std::optional<UUID> parse_raw(std::span<uint8_t> bytes);

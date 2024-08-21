@@ -42,7 +42,7 @@
         if (!_x.has_value()) { \
             return std::nullopt; \
         } \
-        _x.value(); \
+        std::move(_x.value()); \
     })
 
 #define try_unwrap_optional_or(x, err) \

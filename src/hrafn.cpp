@@ -24,6 +24,7 @@
 #include <sodium/crypto_sign.h>
 #include <spdlog/spdlog.h>
 
+#include "asio/error_code.hpp"
 #include "crypto/crypto.h"
 #include "messages.pb.h"
 #include "utils/error_utils.h"
@@ -49,6 +50,7 @@ struct Stream {
         std::vector<uint8_t> bytes(obj->ByteSizeLong());
         obj->SerializeToArray(bytes.data(), bytes.size());
         co_try_unwrap(co_await write(bytes));
+        co_return std::expected<void, asio::error_code>();
     }
 };
 
@@ -193,7 +195,7 @@ public:
             }
 
             // NOLINTNEXTLINE
-            Contact contact = connection.contact.value();
+            Contact contact = std::move(connection.contact.value());
 
             if (std::find(message.recipients.begin(),
                         message.recipients.end(),

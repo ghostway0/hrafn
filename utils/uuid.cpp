@@ -6,7 +6,6 @@
 #include <cctype>
 #include <expected>
 #include <optional>
-#include <stddef.h>
 #include <string>
 #include <string_view>
 
@@ -42,7 +41,7 @@ std::optional<UUID> UUID::parse(std::string_view str) {
 }
 
 std::optional<UUID> UUID::parse_raw(std::span<uint8_t> bytes) {
-    if (bytes.size() != 16) {
+    if (bytes.size() != kSize) {
         return std::nullopt;
     }
 

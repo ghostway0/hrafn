@@ -23,7 +23,7 @@ constexpr std::optional<std::tuple<uint64_t, size_t>> decode_varuint(
         result |= static_cast<uint64_t>(current & ~0x80) << (read * 7);
 
         if ((current & 0x80) == 0) {
-            return std::tuple<uint64_t, size_t>{result, read};
+            return std::tuple<uint64_t, size_t>{result, read + 1};
         }
     }
 
