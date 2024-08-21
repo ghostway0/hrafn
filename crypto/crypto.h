@@ -1,11 +1,11 @@
 #include <algorithm>
 #include <array>
 #include <cstdint>
-#include <vector>
 #include <optional>
+#include <vector>
 
-#include <absl/strings/str_format.h>
 #include <absl/strings/escaping.h>
+#include <absl/strings/str_format.h>
 #include <absl/types/span.h>
 #include <sodium.h>
 

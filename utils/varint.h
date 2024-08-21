@@ -29,4 +29,3 @@ constexpr std::optional<std::tuple<uint64_t, size_t>> decode_varuint(
 
     return std::nullopt;
 }
-

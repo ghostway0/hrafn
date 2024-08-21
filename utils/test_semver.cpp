@@ -23,4 +23,3 @@ TEST_CASE("Semver parse/to_string") {
         CHECK(SemanticVersion{2, 2, 3} > SemanticVersion{1, 3, 4});
     }
 }
-

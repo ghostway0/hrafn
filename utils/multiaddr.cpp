@@ -24,10 +24,6 @@ std::map<std::string_view,
                 "btle",
                 BluetoothAddress::parse_to_protocol,
         },
-        // {
-        //         "p2p",
-        //         BluetoothAddress::parse_to_protocol,
-        // },
 };
 
 std::map<uint64_t,

@@ -32,4 +32,3 @@ TEST_CASE("UUID parse/to_string") {
         CHECK_EQ(c.value().to_string(), s);
     }
 }
-

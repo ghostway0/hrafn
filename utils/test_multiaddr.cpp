@@ -52,5 +52,5 @@ TEST_CASE("Multiaddr packed representation") {
     auto multiaddr = Multiaddr::parse_raw(packed_multiaddr);
     CHECK(multiaddr.has_value());
     CHECK_EQ(multiaddr->to_string(),
-             "/btle/123e4567-e89b-12d3-a456-426614174000");
+            "/btle/123e4567-e89b-12d3-a456-426614174000");
 }
