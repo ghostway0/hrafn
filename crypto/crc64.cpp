@@ -40,7 +40,11 @@
 #include <cstdint>
 #include <span>
 
-static std::array<uint64_t, 256> const crc64_tab = {
+namespace {
+
+constexpr uint64_t kDefaultSeed = 0x0;
+
+std::array<uint64_t, 256> const crc64_tab = {
         0x0000000000000000,
         0x7ad870c830358979,
         0xf5b0e190606b12f2,
@@ -299,8 +303,12 @@ static std::array<uint64_t, 256> const crc64_tab = {
         0x29b7d047efec8728,
 };
 
+} // namespace
+
+namespace crypto {
+
 uint64_t crc64(std::span<uint8_t const> data) {
-    uint64_t crc = 0xffffffffffffffff;
+    uint64_t crc = kDefaultSeed;
 
     for (uint8_t const byte : data) {
         crc = crc64_tab[static_cast<uint8_t>(crc) ^ byte] ^ (crc >> 8);
@@ -316,3 +324,5 @@ uint64_t crc64(uint64_t crc, std::span<uint8_t const> data) {
 
     return crc;
 }
+
+} // namespace crypto

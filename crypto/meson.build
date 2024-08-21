@@ -19,3 +19,6 @@ crypto_dep = declare_dependency(
   ),
   include_directories: [hrafn_inc],
 )
+
+test_crc_exe = executable('test_crc', 'test_crc64.cpp', dependencies: [doctest_dep, crypto_dep])
+test('test_crc64', test_crc_exe)

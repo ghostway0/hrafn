@@ -10,6 +10,9 @@
 
 #include "multiaddr.h"
 #include "semantic_version.h"
+#include "varint.h"
+
+namespace {
 
 struct VectorCompare {
     bool operator()(std::vector<uint8_t> const &lhs,
@@ -18,16 +21,6 @@ struct VectorCompare {
                 lhs.begin(), lhs.end(), rhs.begin(), rhs.end());
     }
 };
-
-constexpr std::vector<uint8_t> encode_varint(uint64_t val) {
-    std::vector<uint8_t> result;
-    while (val >= 0x80) {
-        result.push_back((val & 0xFF) | 0x80);
-        val >>= 7;
-    }
-    result.push_back(val & 0xFF);
-    return result;
-}
 
 std::map<std::string_view,
         std::function<std::expected<std::shared_ptr<Protocol>, ParseError>(
@@ -51,6 +44,8 @@ std::map<std::vector<uint8_t>,
                 BluetoothAddress::parse_raw_to_protocol,
         },
 };
+
+} // namespace
 
 std::expected<Multiaddr, ParseError> Multiaddr::parse(std::string_view str) {
     Multiaddr multiaddr{};

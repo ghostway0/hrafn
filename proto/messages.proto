@@ -24,10 +24,20 @@ message InternalMessageHeader {
 }
 
 message HandshakeMessage {
-    uint32 version = 1;
-    uint32 flags = 2;
-    uint64 timestamp = 3;
-    uint32 checksum = 4;
-    Ed25519FieldPoint pubkey = 5;
-    bytes signature = 6;
+    uint32 flags = 1;
+    bytes peer_id = 3;
+    // optional bytes signature = 4;
+}
+
+message SemanticVersion {
+    uint32 major = 1;
+    uint32 minor = 2;
+    uint32 patch = 3;
+}
+
+message Packet {
+    SemanticVersion version = 1;
+    uint64 timestamp = 2;
+    uint64 checksum = 3;
+    bytes data = 4;
 }

@@ -32,7 +32,7 @@ subdir('utils')
 
 executable(
   'hrafn',
-  files('src/main.cpp'),
+  files('src/hrafn.cpp'),
   proto_generated,
   cpp_args: cpp_args,
   dependencies: [

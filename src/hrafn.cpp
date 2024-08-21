@@ -1,5 +1,4 @@
 #include <algorithm>
-#include <array>
 #include <cstdint>
 #include <ctime>
 #include <cwchar>
@@ -16,6 +15,7 @@
 #include <absl/log/log.h>
 #include <absl/strings/escaping.h>
 #include <absl/strings/str_split.h>
+#include <absl/time/time.h>
 #include <asio.hpp>
 #include <asio/experimental/channel.hpp>
 #include <fmt/ranges.h>
@@ -24,16 +24,18 @@
 #include <sodium/crypto_sign.h>
 #include <spdlog/spdlog.h>
 
-#include "utils/error_utils.h"
-#include "crypto/crc64.h"
 #include "crypto/crypto.h"
-#include "utils/multiaddr.h"
 #include "messages.pb.h"
+#include "utils/error_utils.h"
+#include "utils/multiaddr.h"
+#include "utils/semantic_version.h"
 
-constexpr uint8_t kVersion = 42;
+constexpr SemanticVersion kVersion = {0, 0, 0};
 constexpr uint32_t kHandshakeMessageMaxSize = 1024;
-constexpr time_t kHandshakeAcceptableTimeDrift = 32;
 
+/// a bidirectional stream of data
+/// guarantees:
+/// - the packets that _are_ received are correct and full
 struct Stream {
     virtual ~Stream() = default;
     // probably should use asio's abstractions
@@ -41,6 +43,13 @@ struct Stream {
             std::span<uint8_t>) = 0;
     virtual asio::awaitable<std::expected<void, asio::error_code>> write(
             std::span<uint8_t>) = 0;
+
+    asio::awaitable<std::expected<void, asio::error_code>> write(
+            auto const *obj) {
+        std::vector<uint8_t> bytes(obj->ByteSizeLong());
+        obj->SerializeToArray(bytes.data(), bytes.size());
+        co_try_unwrap(co_await write(bytes));
+    }
 };
 
 template<typename T, typename S>
@@ -64,8 +73,6 @@ asio::awaitable<std::expected<S, asio::error_code>> stream_read_type(
     co_return root;
 }
 
-// stream should outlive everything, but I'm not sure.
-
 template<typename T, typename S>
 asio::awaitable<std::expected<void, asio::error_code>> stream_write_type(
         std::unique_ptr<Stream> &stream, S val) {
@@ -77,11 +84,6 @@ struct Contact {
     std::optional<std::string> name;
     std::vector<Multiaddr> known_addrs;
     Pubkey pubkey;
-};
-
-struct Identity {
-    Pubkey pubkey;
-    Privkey privkey;
 };
 
 enum class HandshakeError {
@@ -98,48 +100,11 @@ struct Connection {
     std::optional<Contact> contact = std::nullopt;
 
     static asio::awaitable<std::expected<Connection, HandshakeError>> negotiate(
-            std::unique_ptr<Stream> stream, std::optional<Pubkey> pubkey);
+            std::unique_ptr<Stream> stream, Pubkey const &pubkey);
 };
 
-
-    // bool verify() const {
-    //     std::vector<uint8_t> data_to_verify{};
-
-    //     auto flags_bytes = std::span(&flags, 1);
-    //     data_to_verify.insert(
-    //             data_to_verify.end(), flags_bytes.begin(), flags_bytes.end());
-
-    //     auto timestamp_bytes = std::span(&timestamp, 1);
-    //     data_to_verify.insert(data_to_verify.end(),
-    //             timestamp_bytes.begin(),
-    //             timestamp_bytes.end());
-
-    //     if (pubkey_and_signature) {
-    //         Pubkey const &pubkey = pubkey_and_signature.value().pubkey;
-    //         std::array<uint8_t, kSignatureSize> const &signature =
-    //                 pubkey_and_signature.value().signature;
-
-    //         auto const &pubkey_data =
-    //                 pubkey_and_signature.value().pubkey.data();
-    //         data_to_verify.insert(data_to_verify.end(),
-    //                 pubkey_data.begin(),
-    //                 pubkey_data.end());
-
-    //         bool signature_valid = pubkey.verify(
-    //                 std::span<uint8_t const>(data_to_verify), signature);
-
-    //         if (!signature_valid) {
-    //             return false;
-    //         }
-    //     }
-
-    //     uint64_t computed_checksum =
-    //             crc64(std::span<uint8_t const>(data_to_verify));
-
-    //     return computed_checksum == checksum;
-    // }
-
-// TODO(ghostway): I think I should have a SignedMessage message in the protobuf.
+// TODO(ghostway): I think I should have a SignedMessage message in the
+// protobuf.
 
 // protocol:
 // 1. handshake:
@@ -162,82 +127,37 @@ struct Connection {
 
 struct HandshakeMessage {
     uint32_t flags;
-    Pubkey pubkey;
-    Signature signature;
-    time_t timestamp;
-    chksum_t checksum;
+    PeerId peer_id;
 
-    static HandshakeMessage generate(Keypair const &keypair) {
+    static HandshakeMessage generate(PeerId const &peer_id) {
         HandshakeMessage message{
                 .flags = 0,
-                .pubkey = keypair.pubkey,
-                .timestamp = std::time(nullptr),
+                .peer_id = peer_id,
         };
 
-        std::vector<uint8_t> data_to_sign{};
-        auto flags_bytes = std::span(&message.flags, 1);
-        data_to_sign.insert(
-                data_to_sign.end(), flags_bytes.begin(), flags_bytes.end());
+        return message;
+    }
 
-        auto timestamp_bytes = std::span(&message.timestamp, 1);
-        data_to_sign.insert(data_to_sign.end(),
-                timestamp_bytes.begin(),
-                timestamp_bytes.end());
-
-        auto const &pubkey_data = message.pubkey.data();
-        data_to_sign.insert(
-                data_to_sign.end(), pubkey_data.begin(), pubkey_data.end());
-
-        message.signature = Signature{keypair.privkey.sign(data_to_sign)};
-
-        message.checksum = crc64(std::span<uint8_t const>(data_to_sign));
-
+    doomday::HandshakeMessage proto() const {
+        doomday::HandshakeMessage message;
+        message.set_flags(flags);
+        message.set_peer_id(peer_id.to_base64());
         return message;
     }
 };
 
-std::optional<HandshakeError> validate_handshake(
-        HandshakeMessage const &handshake, uint64_t timestamp) {
-    // if (handshake.version != kVersion) {
-    //     return HandshakeError::InvalidVersion;
-    // }
-
-    // if (absl::crc32c_t{handshake.checksum()}
-    //         != absl::ComputeCrc32c()) {
-    //     return HandshakeError::InvalidChecksum;
-    // }
-
-    if (std::abs(static_cast<int64_t>(handshake.timestamp - timestamp))
-            > kHandshakeAcceptableTimeDrift) {
-        return HandshakeError::InvalidTimestamp;
-    }
-
-    // TODO(ghostway): cleanup
-    // if (!handshake.verify()) {
-    //     return HandshakeError::InvalidChecksum;
-    // }
-
-    return std::nullopt;
-}
-
 asio::awaitable<std::expected<Connection, HandshakeError>>
-Connection::negotiate(
-        std::unique_ptr<Stream> stream, std::optional<Pubkey> pubkey) {
-    // co_await stream_write_type<doomday::HandshakeMessage>(
-    //         stream, HandshakeMessage{.flags = 0, .pubkey = pubkey}.pack());
+Connection::negotiate(std::unique_ptr<Stream> stream, Pubkey const &pubkey) {
+    auto message =
+            HandshakeMessage::generate(PeerId::from_pubkey(pubkey)).proto();
+    co_await stream->write(&message);
 
-    // auto handshake = ({
-    //     auto handshake_or = co_await stream_read_type<doomday::HandshakeMessage,
-    //             doomday::HandshakeMessage,
-    //             kHandshakeMessageMaxSize>(stream);
-    //     co_try_unwrap_or(handshake_or, HandshakeError::InvalidFormat);
-    // });
-
-    // if (std::optional<HandshakeError> validation_error = validate_handshake(
-    //             HandshakeMessage::unpack(handshake).value(), time(nullptr));
-    //         validation_error.has_value()) {
-    //     co_return std::unexpected(validation_error.value());
-    // }
+    auto handshake = ({
+        auto handshake_or = co_await stream_read_type<doomday::HandshakeMessage,
+                doomday::HandshakeMessage,
+                kHandshakeMessageMaxSize>(stream);
+        co_try_unwrap_or(handshake_or, HandshakeError::InvalidFormat);
+    });
 
     co_return Connection{.stream = std::move(stream)};
 }
@@ -291,10 +211,7 @@ private:
     std::vector<Message> messages_;
 
     asio::awaitable<void> sync_one(Connection &connection, Message message) {
-        std::vector<uint8_t> header_bytes =
-                serialize_to_bytes<doomday::MessageHeader>(&message.header);
-
-        co_await connection.stream->write(header_bytes);
+        co_await connection.stream->write(&message.header);
         co_await connection.stream->write(message.data);
     }
 };
