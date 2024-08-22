@@ -274,15 +274,15 @@ private:
 int main() {
     example();
 
-    asio::io_context ctx;
+    // asio::io_context ctx;
 
-    Central central(ctx);
-    BluetoothDiscovery discovery_service{central.events()};
+    // Central central(ctx);
+    // BluetoothDiscovery discovery_service{central.events()};
 
-    asio::co_spawn(ctx, central.run(), asio::detached);
-    asio::co_spawn(ctx, discovery_service.run(), asio::detached);
+    // asio::co_spawn(ctx, central.run(), asio::detached);
+    // asio::co_spawn(ctx, discovery_service.run(), asio::detached);
 
-    ctx.run();
+    // ctx.run();
 
     return 0;
 }

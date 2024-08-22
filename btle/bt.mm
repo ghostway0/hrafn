@@ -1,17 +1,12 @@
 #import "bt.h"
-#include <cstdio>
-
 #import <CoreBluetooth/CoreBluetooth.h>
 #import <Foundation/Foundation.h>
-
-namespace cb {
+#include <cstdio>
 
 static DiscoveredPeripheralCallback discovered_peripheral_callback;
 static ConnectionCallback connection_callback;
 static SubscriptionCallback subscription_callback;
 static DataReceivedCallback data_received_callback;
-
-static dispatch_queue_t bt_queue;
 
 NSUUID *uuid_to_nsuuid(const UUID &uuid) {
   uuid_t ns_uuid_bytes;
@@ -25,34 +20,66 @@ UUID nsuuid_to_uuid(NSUUID *ns_uuid) {
   return uuid;
 }
 
-static UUID cbuuid_to_uuid(CBUUID *cb_uuid) {
-  UUID uuid = {}; // Zero-initialize the UUID array
+static dispatch_queue_t bt_queue;
 
-  NSData *uuid_data = [cb_uuid data];
-  const uint8_t *bytes = static_cast<const uint8_t *>([uuid_data bytes]);
-  NSUInteger length = [uuid_data length];
+@interface BluetoothDelegate
+    : NSObject <CBCentralManagerDelegate, CBPeripheralManagerDelegate>
+@end
 
-  if (length == 2 || length == 4) {
-    // For 16-bit or 32-bit UUIDs, map to the standard base UUID format
-    static const uint8_t base_uuid[] = {0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-                                        0x10, 0x00, 0x80, 0x00, 0x00, 0x80,
-                                        0x5F, 0x9B, 0x34, 0xFB};
-    std::copy(std::begin(base_uuid), std::end(base_uuid), uuid.bytes.begin());
-    std::copy(bytes, bytes + length,
-              uuid.bytes.begin() +
-                  (4 - length)); // Adjust position for the length
-  } else if (length == 16) {
-    // For 128-bit UUIDs, directly copy the bytes
-    std::copy(bytes, bytes + 16, uuid.bytes.begin());
-  } else {
-    assert(false && "Invalid CBUUID length");
-  }
+@implementation BluetoothDelegate
 
-  return uuid;
+- (void)centralManagerDidUpdateState:(CBCentralManager *)central {
 }
+
+- (void)peripheralManagerDidUpdateState:(CBPeripheralManager *)peripheral {
+  NSLog(@"state %ld", peripheral.state);
+}
+
+- (void)centralManager:(CBCentralManager *)central
+    didDiscoverPeripheral:(CBPeripheral *)peripheral
+        advertisementData:(NSDictionary<NSString *, id> *)advertisementData
+                     RSSI:(NSNumber *)RSSI {
+}
+
+- (void)centralManager:(CBCentralManager *)central
+    didConnectPeripheral:(CBPeripheral *)peripheral {
+}
+
+- (void)centralManager:(CBCentralManager *)central
+    didFailToConnectPeripheral:(CBPeripheral *)peripheral
+                         error:(NSError *)error {
+}
+
+- (void)centralManager:(CBCentralManager *)central
+    didDisconnectPeripheral:(CBPeripheral *)peripheral
+                      error:(NSError *)error {
+}
+
+- (void)peripheralManager:(CBPeripheralManager *)peripheral
+    didReceiveWriteRequests:(NSArray<CBATTRequest *> *)requests {
+}
+
+- (void)peripheralManagerDidStartAdvertising:(CBPeripheralManager *)peripheral
+                                       error:(NSError *)error {
+  if (error == nullptr) {
+    NSLog(@"Successfully started advertising.");
+  } else {
+    NSLog(@"Error starting advertising: %@", error);
+  }
+}
+
+- (void)peripheralManager:(CBPeripheralManager *)peripheral
+                         central:(CBCentral *)central
+    didSubscribeToCharacteristic:(CBCharacteristic *)characteristic {
+}
+
+@end
+
+namespace cb {
 
 void bt_init() {
   if (bt_queue == nullptr) {
+    // bt_queue = dispatch_queue_create("bt_queue", nullptr);
     bt_queue = dispatch_queue_create("bt_queue", nullptr);
   }
 }
@@ -73,112 +100,44 @@ void set_data_received_callback(DataReceivedCallback callback) {
   data_received_callback = std::move(callback);
 }
 
-@interface BluetoothDelegate
-    : NSObject <CBCentralManagerDelegate, CBPeripheralManagerDelegate>
-@end
+CBCentralManagerWrapper create_central_manager() {
+  CBCentralManagerWrapper wrapper = CBCentralManagerWrapper();
 
-@implementation BluetoothDelegate
+  BluetoothDelegate *bt_dlg = [[BluetoothDelegate alloc] init];
+  CBCentralManager *cm =
+      [[CBCentralManager alloc] initWithDelegate:bt_dlg queue:bt_queue];
 
-- (void)centralManager:(CBCentralManager *)central
-    didDiscoverPeripheral:(CBPeripheral *)peripheral
-        advertisementData:(NSDictionary<NSString *, id> *)advertisementData
-                     RSSI:(NSNumber *)RSSI {
-  // Handle peripheral discovery
-  UUID uuid = nsuuid_to_uuid(peripheral.identifier);
-  std::string name = peripheral.name ? [peripheral.name UTF8String] : "";
-  discovered_peripheral_callback(uuid, name);
-}
+  wrapper.delegate = static_cast<void const *>(bt_dlg);
+  wrapper.central_manager = static_cast<void const *>(cm);
 
-- (void)centralManager:(CBCentralManager *)central
-    didConnectPeripheral:(CBPeripheral *)peripheral {
-  UUID uuid = nsuuid_to_uuid(peripheral.identifier);
-  connection_callback(uuid, true);
-}
-
-- (void)centralManager:(CBCentralManager *)central
-    didFailToConnectPeripheral:(CBPeripheral *)peripheral
-                         error:(NSError *)error {
-  UUID uuid = nsuuid_to_uuid(peripheral.identifier);
-  connection_callback(uuid, false);
-}
-
-- (void)centralManager:(CBCentralManager *)central
-    didDisconnectPeripheral:(CBPeripheral *)peripheral
-                      error:(NSError *)error {
-  UUID uuid = nsuuid_to_uuid(peripheral.identifier);
-  connection_callback(uuid, false);
-}
-
-- (void)peripheralManagerDidStartAdvertising:(CBPeripheralManager *)peripheral
-                                       error:(NSError *)error {
-  if (error) {
-    NSLog(@"Error starting advertising: %@", error);
-  } else {
-    NSLog(@"Successfully started advertising.");
-  }
-}
-
-- (void)peripheralManagerDidUpdateState:(CBPeripheralManager *)peripheral {
-}
-
-- (void)centralManagerDidUpdateState:(CBCentralManager *)central {
-}
-
-- (void)peripheralManager:(CBPeripheralManager *)peripheral
-                         central:(CBCentral *)central
-    didSubscribeToCharacteristic:(CBCharacteristic *)characteristic {
-  UUID central_uuid = nsuuid_to_uuid(central.identifier);
-  UUID char_uuid = cbuuid_to_uuid(characteristic.UUID);
-  subscription_callback(central_uuid, char_uuid);
-}
-
-- (void)peripheralManager:(CBPeripheralManager *)peripheral
-    didReceiveWriteRequests:(NSArray<CBATTRequest *> *)requests {
-  for (CBATTRequest *request in requests) {
-    UUID uuid = cbuuid_to_uuid(request.characteristic.UUID);
-    std::vector<uint8_t> data((uint8_t *)request.value.bytes,
-                              (uint8_t *)request.value.bytes +
-                                  request.value.length);
-    data_received_callback(uuid, data);
-    [peripheral respondToRequest:request withResult:CBATTErrorSuccess];
-  }
-}
-
-@end
-
-CBCentralManagerWrapper *create_central_manager() {
-  CBCentralManagerWrapper *wrapper = new CBCentralManagerWrapper();
-  wrapper->delegate =
-      static_cast<void const *>([[BluetoothDelegate alloc] init]);
-  wrapper->central_manager = static_cast<void const *>([[CBCentralManager alloc]
-      initWithDelegate:(__bridge id<CBCentralManagerDelegate>)(wrapper
-                                                                   ->delegate)
-                 queue:bt_queue]);
+  [bt_dlg retain];
+  [cm retain];
   return wrapper;
 }
 
-void destroy_central_manager(CBCentralManagerWrapper *wrapper) {
-  [(id)(wrapper->central_manager) release];
-  [(id)(wrapper->delegate) release];
-  delete wrapper;
+void destroy_central_manager(CBCentralManagerWrapper wrapper) {
+  [(id)(wrapper.central_manager) release];
+  [(id)(wrapper.delegate) release];
 }
 
-CBPeripheralManagerWrapper *create_peripheral_manager() {
-  CBPeripheralManagerWrapper *wrapper = new CBPeripheralManagerWrapper();
-  wrapper->delegate =
-      static_cast<void const *>([[BluetoothDelegate alloc] init]);
-  wrapper->peripheral_manager =
-      static_cast<void const *>([[CBPeripheralManager alloc]
-          initWithDelegate:(__bridge id<
-                               CBPeripheralManagerDelegate>)(wrapper->delegate)
-                     queue:bt_queue]);
+CBPeripheralManagerWrapper create_peripheral_manager() {
+  CBPeripheralManagerWrapper wrapper = CBPeripheralManagerWrapper();
+
+  BluetoothDelegate *bt_dlg = [[BluetoothDelegate alloc] init];
+  CBPeripheralManager *pmgr =
+      [[CBPeripheralManager alloc] initWithDelegate:bt_dlg queue:bt_queue];
+
+  wrapper.delegate = static_cast<void const *>(bt_dlg);
+  wrapper.peripheral_manager = static_cast<void const *>(pmgr);
+
+  [pmgr retain];
+  [bt_dlg retain];
   return wrapper;
 }
 
-void destroy_peripheral_manager(CBPeripheralManagerWrapper *wrapper) {
-  [(id)(wrapper->peripheral_manager) release];
-  [(id)(wrapper->delegate) release];
-  delete wrapper;
+void destroy_peripheral_manager(CBPeripheralManagerWrapper wrapper) {
+  [(id)(wrapper.peripheral_manager) release];
+  [(id)(wrapper.delegate) release];
 }
 
 void start_scanning(CBCentralManagerWrapper *wrapper) {
@@ -200,14 +159,19 @@ void start_advertising(CBPeripheralManagerWrapper *wrapper,
     [service_uuids addObject:cbuuid];
   }
 
-  NSDictionary *advertising_data = @{
-    CBAdvertisementDataLocalNameKey :
-        [NSString stringWithUTF8String:data.local_name.c_str()],
-    CBAdvertisementDataServiceUUIDsKey : service_uuids,
-    CBAdvertisementDataManufacturerDataKey :
-        [NSData dataWithBytes:data.manufacturer_data.data()
-                       length:data.manufacturer_data.size()]
-  };
+  NSMutableDictionary *advertising_data = [[NSMutableDictionary alloc] init];
+  [advertising_data autorelease];
+
+  [advertising_data
+      setObject:[NSString stringWithUTF8String:data.local_name.c_str()]
+         forKey:CBAdvertisementDataLocalNameKey];
+  [advertising_data setObject:service_uuids
+                       forKey:CBAdvertisementDataServiceUUIDsKey];
+  [advertising_data
+      setObject:[NSData dataWithBytes:data.manufacturer_data.data()
+                               length:data.manufacturer_data.size()]
+         forKey:CBAdvertisementDataManufacturerDataKey];
+
   [(CBPeripheralManager *)(wrapper->peripheral_manager)
       startAdvertising:advertising_data];
 }
@@ -248,15 +212,17 @@ CBMutableCharacteristic *create_characteristic(CBUUID *uuid, NSData *value,
     properties |= CBCharacteristicPropertyRead;
     permissions |= CBAttributePermissionsReadable;
   }
+
   if (is_writable) {
     properties |= CBCharacteristicPropertyWrite;
     permissions |= CBAttributePermissionsWriteable;
+    value = nullptr;
   }
 
-  return [[CBMutableCharacteristic alloc] initWithType:uuid
-                                            properties:properties
-                                                 value:value
-                                           permissions:permissions];
+  return [[CBMutableCharacteristic alloc]
+      initWithType:uuid
+        properties:properties
+             value:(is_writable ? nil : value)permissions:permissions];
 }
 
 void add_service(CBPeripheralManagerWrapper *wrapper,

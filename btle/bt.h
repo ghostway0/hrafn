@@ -40,11 +40,11 @@ struct AdvertisingData {
 
 void bt_init();
 
-CBCentralManagerWrapper *create_central_manager();
-void destroy_central_manager(CBCentralManagerWrapper *wrapper);
+CBCentralManagerWrapper create_central_manager();
+void destroy_central_manager(CBCentralManagerWrapper wrapper);
 
-CBPeripheralManagerWrapper *create_peripheral_manager();
-void destroy_peripheral_manager(CBPeripheralManagerWrapper *wrapper);
+CBPeripheralManagerWrapper create_peripheral_manager();
+void destroy_peripheral_manager(CBPeripheralManagerWrapper wrapper);
 
 void start_scanning(CBCentralManagerWrapper *wrapper);
 void stop_scanning(CBCentralManagerWrapper *wrapper);
