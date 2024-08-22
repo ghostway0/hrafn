@@ -32,7 +32,6 @@ static dispatch_queue_t bt_queue;
 }
 
 - (void)peripheralManagerDidUpdateState:(CBPeripheralManager *)peripheral {
-  NSLog(@"state %ld", peripheral.state);
 }
 
 - (void)centralManager:(CBCentralManager *)central
@@ -61,11 +60,7 @@ static dispatch_queue_t bt_queue;
 
 - (void)peripheralManagerDidStartAdvertising:(CBPeripheralManager *)peripheral
                                        error:(NSError *)error {
-  if (error == nullptr) {
-    NSLog(@"Successfully started advertising.");
-  } else {
-    NSLog(@"Error starting advertising: %@", error);
-  }
+  assert(error == nullptr && "Advertising didn't start (error)");
 }
 
 - (void)peripheralManager:(CBPeripheralManager *)peripheral

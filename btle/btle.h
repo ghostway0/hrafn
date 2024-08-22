@@ -1,29 +1,18 @@
-#include "bt.h"
-#include <absl/time/time.h>
-#include <spdlog/spdlog.h>
+#pragma once
 
-void example() {
-    cb::bt_init();
-    cb::CBPeripheralManagerWrapper w = cb::create_peripheral_manager();
+#include <vector>
 
-    UUID characteristic_uuid = UUID::generate_random();
-    cb::Characteristic characteristic = {.uuid = characteristic_uuid,
-            .value = "Initial Value",
-            .is_readable = true,
-            .is_writable = true};
+#include "utils/uuid.h"
 
-    UUID service_uuid = UUID::generate_random();
-    cb::add_service(&w, service_uuid.to_string(), {characteristic});
+struct Characteristic {
+    UUID uuid;
+    std::string value;
+    bool is_readable;
+    bool is_writable;
+};
 
-    absl::SleepFor(absl::Milliseconds(100));
-    cb::start_advertising(&w,
-            cb::AdvertisingData{
-                    .local_name = "kaki", .service_uuids = {service_uuid}});
-
-    spdlog::info("doing stuff");
-    absl::SleepFor(absl::Seconds(20));
-    spdlog::info("finished doing stuff");
-
-    cb::stop_advertising(&w);
-    cb::destroy_peripheral_manager(w);
-}
+struct AdvertisingData {
+    std::string local_name;
+    std::vector<UUID> service_uuids;
+    std::vector<uint8_t> manufacturer_data;
+};

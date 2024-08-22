@@ -17,6 +17,7 @@
 #include <absl/strings/str_split.h>
 #include <absl/time/time.h>
 #include <asio.hpp>
+#include <asio/error_code.hpp>
 #include <asio/experimental/channel.hpp>
 #include <fmt/ranges.h>
 #include <sodium/crypto_box.h>
@@ -24,14 +25,11 @@
 #include <sodium/crypto_sign.h>
 #include <spdlog/spdlog.h>
 
-#include "asio/error_code.hpp"
 #include "crypto/crypto.h"
 #include "messages.pb.h"
 #include "utils/error_utils.h"
 #include "utils/multiaddr.h"
 #include "utils/semantic_version.h"
-
-#include "btle/btle.h"
 
 constexpr SemanticVersion kVersion = {0, 0, 0};
 constexpr uint32_t kHandshakeMessageMaxSize = 1024;
@@ -272,17 +270,15 @@ private:
 };
 
 int main() {
-    example();
+    asio::io_context ctx;
 
-    // asio::io_context ctx;
+    Central central(ctx);
+    BluetoothDiscovery discovery_service{central.events()};
 
-    // Central central(ctx);
-    // BluetoothDiscovery discovery_service{central.events()};
+    asio::co_spawn(ctx, central.run(), asio::detached);
+    asio::co_spawn(ctx, discovery_service.run(), asio::detached);
 
-    // asio::co_spawn(ctx, central.run(), asio::detached);
-    // asio::co_spawn(ctx, discovery_service.run(), asio::detached);
-
-    // ctx.run();
+    ctx.run();
 
     return 0;
 }

@@ -1,9 +1,11 @@
 #pragma once
 
-#include "utils/uuid.h"
 #include <functional>
 #include <string>
 #include <vector>
+
+#include "btle/btle.h"
+#include "utils/uuid.h"
 
 using DiscoveredPeripheralCallback =
         std::function<void(const UUID &, std::string const &)>;
@@ -23,19 +25,6 @@ struct CBCentralManagerWrapper {
 struct CBPeripheralManagerWrapper {
     void const *peripheral_manager;
     void const *delegate;
-};
-
-struct Characteristic {
-    UUID uuid;
-    std::string value;
-    bool is_readable;
-    bool is_writable;
-};
-
-struct AdvertisingData {
-    std::string local_name;
-    std::vector<UUID> service_uuids;
-    std::vector<uint8_t> manufacturer_data;
 };
 
 void bt_init();
