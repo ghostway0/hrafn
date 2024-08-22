@@ -1,4 +1,3 @@
-#include <_ctype.h>
 #include <absl/strings/escaping.h>
 #include <absl/strings/str_format.h>
 #include <algorithm>
@@ -9,7 +8,15 @@
 #include <string>
 #include <string_view>
 
+#include <sodium/randombytes.h>
+
 #include "uuid.h"
+
+UUID UUID::generate_random() {
+    UUID uuid{};
+    randombytes_buf(uuid.bytes.data(), uuid.kSize);
+    return uuid;
+}
 
 std::optional<UUID> UUID::parse(std::string_view str) {
     std::string clean{};

@@ -38,6 +38,7 @@ struct Protocol {
 struct Multiaddr {
     std::vector<std::unique_ptr<Protocol>> protocols;
     std::vector<uint8_t> identifier;
+    // not sure if this is even standard
     std::optional<SemanticVersion> version;
 
     static std::optional<Multiaddr> parse(std::string_view str);

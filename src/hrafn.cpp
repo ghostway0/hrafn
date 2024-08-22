@@ -31,6 +31,8 @@
 #include "utils/multiaddr.h"
 #include "utils/semantic_version.h"
 
+#include "btle/btle.h"
+
 constexpr SemanticVersion kVersion = {0, 0, 0};
 constexpr uint32_t kHandshakeMessageMaxSize = 1024;
 
@@ -270,6 +272,8 @@ private:
 };
 
 int main() {
+    example();
+
     asio::io_context ctx;
 
     Central central(ctx);

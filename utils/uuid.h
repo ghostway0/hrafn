@@ -15,6 +15,7 @@ struct UUID {
 
     static std::optional<UUID> parse(std::string_view str);
     static std::optional<UUID> parse_raw(std::span<uint8_t> bytes);
+    static UUID generate_random();
 
     std::string to_string() const;
 };

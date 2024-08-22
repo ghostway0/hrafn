@@ -15,7 +15,7 @@ constexpr std::vector<uint8_t> encode_varuint(uint64_t val) {
 }
 
 constexpr std::optional<std::tuple<uint64_t, size_t>> decode_varuint(
-        std::span<uint8_t> bytes) {
+        std::span<uint8_t const> bytes) {
     uint64_t result = 0;
 
     for (size_t read = 0; read < bytes.size(); read++) {

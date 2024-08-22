@@ -1,9 +1,14 @@
-project('hrafn', 'cpp', default_options: ['cpp_std=c++23'])
+project('hrafn', 'cpp', 'objcpp', default_options: [])
 
-cpp_args = ['-march=native']
+cpp_args = ['-march=native', '-std=c++26']
+add_project_arguments(cpp_args, language: 'cpp')
+
+objcpp_args = ['-std=c++20']
+add_project_arguments(objcpp_args, language: 'objcpp')
 
 is_debug = get_option('debug')
 is_release = not is_debug
+cxx = meson.get_compiler('cpp')
 
 asio_dep = dependency('asio')
 sodium_dep = dependency('libsodium')
@@ -29,12 +34,12 @@ proto_generated = protobuf_gen.process('proto/messages.proto')
 
 subdir('crypto')
 subdir('utils')
+subdir('btle')
 
 executable(
   'hrafn',
   files('src/hrafn.cpp'),
   proto_generated,
-  cpp_args: cpp_args,
   dependencies: [
     asio_dep,
     sodium_dep,
@@ -44,6 +49,7 @@ executable(
     spdlog_dep,
     crypto_dep,
     utils_dep,
+    btle_dep,
   ],
   include_directories: [hrafn_inc],
 )

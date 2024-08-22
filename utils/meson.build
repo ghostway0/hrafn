@@ -29,3 +29,6 @@ test('test_multiaddr', test_multiaddr_exe)
 
 test_uuid_exe = executable('test_uuid', 'test_uuid.cpp', dependencies: [doctest_dep, utils_dep])
 test('test_uuid', test_uuid_exe)
+
+test_varint_exe = executable('test_varint', 'test_varint.cpp', dependencies: [doctest_dep, utils_dep])
+test('test_varint', test_varint_exe)
