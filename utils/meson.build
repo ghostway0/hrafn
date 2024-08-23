@@ -17,7 +17,7 @@ utils_lib = static_library(
 
 utils_dep = declare_dependency(
   link_with: utils_lib,
-  sources: files('multiaddr.h', 'semantic_version.h', 'uuid.h', 'varint.h'),
+  sources: files('multiaddr.h', 'semantic_version.h', 'uuid.h', 'varint.h', 'bloom_filter.h'),
   include_directories: [hrafn_inc],
 )
 
