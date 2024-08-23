@@ -4,7 +4,7 @@
 #include <string>
 #include <vector>
 
-#include "btle/btle.h"
+#include "btle/types.h"
 #include "utils/uuid.h"
 
 using DiscoveredPeripheralCallback =

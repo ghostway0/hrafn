@@ -2,11 +2,8 @@
 
 #include <vector>
 
-#include <absl/time/time.h>
-#include <spdlog/spdlog.h>
-
+#include "btle/types.h"
 #include "bt.h"
-#include "btle.h"
 
 class CoreBluetoothAdapter {
 public:

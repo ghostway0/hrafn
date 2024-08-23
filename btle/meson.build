@@ -26,7 +26,7 @@ btle_lib = static_library(
 
 btle_dep = declare_dependency(
   link_with: btle_lib,
-  sources: files('btle.h'),
+  sources: files('btle.h', 'types.h'),
   dependencies: [],
   include_directories: [hrafn_inc],
 )

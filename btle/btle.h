@@ -1,18 +1,14 @@
-#pragma once
+#include <string>
 
-#include <vector>
+#include "btle/types.h"
 
-#include "utils/uuid.h"
+#ifdef __APPLE__
 
-struct Characteristic {
-    UUID uuid;
-    std::string value;
-    bool is_readable;
-    bool is_writable;
-};
+#include "btle/corebluetooth/cbtle.h"
 
-struct AdvertisingData {
-    std::string local_name;
-    std::vector<UUID> service_uuids;
-    std::vector<uint8_t> manufacturer_data;
-};
+#elifdef __LINUX__
+
+#include "btle/bluez/bluez_btle.h"
+
+#endif
+

@@ -1,6 +1,7 @@
 crypto_sources = files(
   'crc64.cpp',
   'crypto.cpp',
+  'double_ratchet.cpp',
 )
 
 crypto_lib = static_library(
@@ -16,6 +17,7 @@ crypto_dep = declare_dependency(
   sources: files(
     'crc64.h',
     'crypto.h',
+    'double_ratchet.h',
   ),
   include_directories: [hrafn_inc],
 )
