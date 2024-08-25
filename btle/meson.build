@@ -20,6 +20,7 @@ btle_lib = static_library(
   install: true,
   dependencies: [
     absl_dep,
+    net_dep,
   ] + btle_deps,
   include_directories: [hrafn_inc],
 )

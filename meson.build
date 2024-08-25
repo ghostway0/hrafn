@@ -1,6 +1,6 @@
 project('hrafn', 'cpp', 'objcpp', default_options: [])
 
-cpp_args = ['-march=native', '-std=c++26']
+cpp_args = ['-march=native', '-std=c++23']
 add_project_arguments(cpp_args, language: 'cpp')
 
 objcpp_args = ['-std=c++20']
@@ -34,6 +34,7 @@ proto_generated = protobuf_gen.process('proto/messages.proto')
 
 subdir('crypto')
 subdir('utils')
+subdir('net')
 subdir('btle')
 
 executable(

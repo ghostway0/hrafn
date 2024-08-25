@@ -2,18 +2,19 @@
 
 #include <functional>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include "btle/types.h"
 #include "utils/uuid.h"
 
 using DiscoveredPeripheralCallback =
-        std::function<void(const UUID &, std::string const &)>;
+        std::function<void(const UUID &, AdvertisingData)>;
 using ConnectionCallback = std::function<void(const UUID &, bool)>;
 using SubscriptionCallback = std::function<void(
         const UUID &central_uuid, const UUID &characteristic_uuid)>;
 using DataReceivedCallback =
-        std::function<void(const UUID &, std::vector<uint8_t> const &)>;
+        std::function<bool(const UUID &, std::vector<uint8_t> const &)>;
 
 namespace cb {
 

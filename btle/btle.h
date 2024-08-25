@@ -11,4 +11,3 @@
 #include "btle/bluez/bluez_btle.h"
 
 #endif
-

@@ -1,6 +1,6 @@
-#include "crypto/double_ratchet.h"
+#include "crypto/kdf_chain.h"
 
-std::vector<uint8_t> const kKDFChainInput{0x13, 0x37};
+std::array<uint8_t, 2> constexpr kKDFChainInput{0x13, 0x37};
 
 std::array<uint8_t, crypto_kdf_hkdf_sha512_KEYBYTES> kdf_hmac(
         std::span<uint8_t const> salt, std::span<uint8_t const> input) {
