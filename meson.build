@@ -1,4 +1,4 @@
-project('hrafn', 'cpp', 'objcpp', default_options: [])
+project('hrafn', 'cpp', 'objcpp', 'objc', default_options: [])
 
 cpp_args = ['-march=native', '-std=c++23']
 add_project_arguments(cpp_args, language: 'cpp')
@@ -13,7 +13,7 @@ cxx = meson.get_compiler('cpp')
 asio_dep = dependency('asio')
 sodium_dep = dependency('libsodium')
 protobuf_dep = dependency('protobuf')
-absl_dep = dependency('absl', modules: ['absl::strings', 'absl::time'])
+absl_dep = dependency('absl', modules: ['absl::strings', 'absl::time', 'absl::log'])
 fmt_dep = dependency('fmt')
 spdlog_dep = dependency('spdlog')
 doctest_dep = dependency('doctest')
@@ -46,6 +46,22 @@ executable(
     sodium_dep,
     absl_dep,
     protobuf_dep,
+    fmt_dep,
+    spdlog_dep,
+    crypto_dep,
+    utils_dep,
+    btle_dep,
+  ],
+  include_directories: [hrafn_inc],
+)
+
+executable(
+  'bttest',
+  files('src/test.cpp'),
+  dependencies: [
+    asio_dep,
+    sodium_dep,
+    absl_dep,
     fmt_dep,
     spdlog_dep,
     crypto_dep,

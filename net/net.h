@@ -21,4 +21,6 @@ struct Stream {
         co_try_unwrap(co_await write(bytes));
         co_return std::expected<void, asio::error_code>{};
     }
+
+    bool valid();
 };

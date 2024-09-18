@@ -14,7 +14,7 @@
 
 UUID UUID::generate_random() {
     UUID uuid{};
-    randombytes_buf(uuid.bytes.data(), uuid.kSize);
+    randombytes_buf(uuid.bytes().data(), UUID::kSize);
     return uuid;
 }
 
@@ -41,7 +41,7 @@ std::optional<UUID> UUID::parse(std::string_view str) {
         }
 
         assert(byte_result.size() == 1);
-        uuid.bytes[i] = static_cast<uint8_t>(byte_result[0]);
+        uuid.bytes()[i] = static_cast<uint8_t>(byte_result[0]);
     }
 
     return uuid;
@@ -53,19 +53,19 @@ std::optional<UUID> UUID::parse_raw(std::span<uint8_t> bytes) {
     }
 
     UUID uuid{};
-    std::copy(bytes.begin(), bytes.end(), uuid.bytes.begin());
+    std::copy(bytes.begin(), bytes.end(), uuid.bytes().begin());
 
     return uuid;
 }
 
 std::string UUID::to_string() const {
     std::string out{};
-    for (size_t i = 0; i < bytes.size(); i++) {
+    for (size_t i = 0; i < bytes_.size(); i++) {
         if (i == 4 || i == 6 || i == 8 || i == 10) {
             out += '-';
         }
 
-        out += absl::StrFormat("%02x", bytes[i]);
+        out += absl::StrFormat("%02x", bytes_[i]);
     }
 
     return out;

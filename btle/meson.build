@@ -6,7 +6,7 @@ if host_machine.system() == 'darwin'
   foundation_dep = declare_dependency(link_args: ['-framework', 'Foundation'])
 
   btle_deps = [corebluetooth_dep, foundation_dep, cxx.find_library('objc')]
-  btle_sources = files('corebluetooth/bt.mm', 'corebluetooth/cbtle.cpp')
+  btle_sources = files('corebluetooth/bt.mm', 'corebluetooth/types.mm')
 elif host_machine.system() == 'linux'
   sdbusplus_dep = dependency('sdbusplus')
 
@@ -27,7 +27,7 @@ btle_lib = static_library(
 
 btle_dep = declare_dependency(
   link_with: btle_lib,
-  sources: files('btle.h', 'types.h'),
+  sources: files(),
   dependencies: [],
   include_directories: [hrafn_inc],
 )

@@ -2,6 +2,8 @@
 
 std::array<uint8_t, 2> constexpr kKDFChainInput{0x13, 0x37};
 
+namespace {
+
 std::array<uint8_t, crypto_kdf_hkdf_sha512_KEYBYTES> kdf_hmac(
         std::span<uint8_t const> salt, std::span<uint8_t const> input) {
     std::array<uint8_t, crypto_kdf_hkdf_sha512_KEYBYTES> prk{};
@@ -10,6 +12,8 @@ std::array<uint8_t, crypto_kdf_hkdf_sha512_KEYBYTES> kdf_hmac(
 
     return prk;
 }
+
+} // namespace
 
 KDFChain::KDFChain(std::span<uint8_t> seed) {
     root_key_.resize(seed.size());

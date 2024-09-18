@@ -47,7 +47,7 @@ TEST_CASE("Multiaddr packed representation") {
             btle_protocol_bytes.end());
 
     packed_multiaddr.insert(
-            packed_multiaddr.end(), uuid.bytes.begin(), uuid.bytes.end());
+            packed_multiaddr.end(), uuid.bytes().begin(), uuid.bytes().end());
 
     auto multiaddr = Multiaddr::parse_raw(packed_multiaddr);
     CHECK(multiaddr.has_value());

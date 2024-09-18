@@ -74,6 +74,7 @@ Checks: >
   -cppcoreguidelines-rvalue-reference-param-not-moved,
   -cppcoreguidelines-special-member-functions,
   -google-build-using-namespace,
+  -google-readability-todo,
   -misc-const-correctness,
   -misc-no-recursion,
   -modernize-make-unique,

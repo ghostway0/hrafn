@@ -132,7 +132,7 @@ struct BluetoothAddress : Protocol {
     std::string to_string() const override { return address.to_string(); }
 
     std::span<uint8_t const> raw() const override {
-        return {address.bytes.begin(), address.bytes.end()};
+        return {address.bytes().begin(), address.bytes().end()};
     }
 
     static std::optional<std::unique_ptr<Protocol>> parse_to_protocol(

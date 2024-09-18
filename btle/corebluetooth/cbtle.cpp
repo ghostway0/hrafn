@@ -37,15 +37,11 @@ void Adapter::stop_advertising() {
     cb::stop_advertising(&peripheral_manager_wrapper_);
 }
 
-void Adapter::connect_to_peripheral(const UUID &uuid) {
-    cb::connect_to_peripheral(&central_manager_wrapper_, uuid);
-}
-
 void Adapter::disconnect_from_peripheral(const UUID &uuid) {
     cb::disconnect_from_peripheral(&central_manager_wrapper_, uuid);
 }
 
-void Adapter::add_service(std::string const &service_uuid,
+void Adapter::add_service(UUID uuid,
         std::vector<Characteristic> const &characteristics) {
     cb::add_service(
             &peripheral_manager_wrapper_, service_uuid, characteristics);

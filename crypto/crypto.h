@@ -2,6 +2,7 @@
 #include <array>
 #include <cstdint>
 #include <optional>
+#include <string_view>
 #include <vector>
 
 #include <absl/strings/escaping.h>
@@ -20,6 +21,15 @@ public:
     explicit Pubkey(std::array<uint8_t, kPubkeySize> bytes) : bytes_{bytes} {}
 
     static std::optional<Pubkey> from_base64(std::string_view base64);
+
+    static Pubkey from_stringbytes(std::string_view stringbytes) {
+        std::array<uint8_t, kPubkeySize> data{};
+        auto const *bytes =
+                reinterpret_cast<uint8_t const *>(stringbytes.data());
+        std::copy(bytes, bytes + kPubkeySize, data.begin());
+
+        return Pubkey{data};
+    }
 
     std::array<uint8_t, kPubkeySize> const &data() const { return bytes_; }
 
@@ -45,6 +55,21 @@ private:
 
 struct Signature {
     std::array<uint8_t, kSignatureSize> bytes;
+
+    static Signature from_bytes(std::span<uint8_t> bytes) {
+        Signature signature{};
+        std::copy(bytes.begin(), bytes.end(), signature.bytes.begin());
+        return signature;
+    }
+
+    static Signature from_stringbytes(std::string_view stringbytes) {
+        Signature signature{};
+        auto const *bytes =
+                reinterpret_cast<uint8_t const *>(stringbytes.data());
+        std::copy(bytes, bytes + kSignatureSize, signature.bytes.begin());
+
+        return signature;
+    }
 };
 
 struct PeerId {
