@@ -1,3 +1,4 @@
+#include "btle/corebluetooth/bt.h"
 #include <string>
 
 #ifdef __APPLE__
@@ -10,18 +11,17 @@
 
 #endif
 
-#include <tbb/concurrent_map.h>
+#include <spdlog/spdlog.h>
 #include <asio.hpp>
 #include <asio/experimental/awaitable_operators.hpp>
 #include <asio/experimental/channel.hpp>
+#include <tbb/concurrent_map.h>
 
 #include "btle/types.h"
 #include "messages.pb.h"
 
 #include "crypto/crypto.h"
 #include "net/net.h"
-
-Adapter get_default_adapter();
 
 struct Packet {
     Pubkey from;
@@ -51,22 +51,22 @@ struct Packet {
 
 using StreamChannel = asio::experimental::channel<void(
         std::error_code, std::unique_ptr<Stream>)>;
-using DataChannel = asio::experimental::channel<void(std::error_code, std::unique_ptr<Packet>)>;
+using DataChannel = asio::experimental::channel<void(
+        std::error_code, std::unique_ptr<Packet>)>;
 
 class StreamMultiplexer {
 public:
     explicit StreamMultiplexer(StreamChannel &stream_channel)
-        : adapter_{get_default_adapter()}, streams_{},
-          stream_channel_{stream_channel} {}
+        : streams_{}, stream_channel_{stream_channel} {}
 
     tbb::concurrent_map<Pubkey, DataChannel> &streams_channel() {
         return streams_;
     }
 
     asio::awaitable<void> run(asio::io_context &ctx) {
-        adapter_.on_discovery(
+        central_adapter_.on_discovery(
                 [this](Peripheral &peripheral, AdvertisingData const &) {
-                    adapter_.connect(peripheral, ConnectOptions{});
+                    central_adapter_.connect(peripheral, ConnectOptions{});
                     // stream_channel_.try_send(asio::error_code{},
                     //         std::make_unique<Stream>(peripheral));
                 });
@@ -88,7 +88,8 @@ public:
         //     }
         // });
 
-        adapter_.start_advertising(AdvertisingOptions{.local_name = "hrafn"});
+        peripheral_adapter_.start_advertising(
+                AdvertisingOptions{.local_name = "hrafn"});
 
         // TODO: start to listen for commands
         // while (running) {}
@@ -96,7 +97,72 @@ public:
     }
 
 private:
-    Adapter adapter_;
+    CentralAdapter central_adapter_{};
+    PeripheralAdapter peripheral_adapter_{};
     tbb::concurrent_map<Pubkey, DataChannel> streams_;
     StreamChannel &stream_channel_;
+};
+
+//
+// CharacteristicProperties properties,
+// Permissions permissions,
+// std::vector<uint8_t> value);
+
+void todo(std::string_view msg) {
+    spdlog::error("TODO: {}", msg);
+    std::terminate();
+}
+
+enum class Property {
+    Read,
+    Write,
+    Notify,
+    Indicate,
+};
+
+class CharacteristicBuilder {
+public:
+    explicit CharacteristicBuilder(UUID uuid) : uuid_{uuid} {}
+
+    CharacteristicBuilder &set_permissions(Permissions permission) {
+        permissions_ = permission;
+        return *this;
+    }
+
+    CharacteristicBuilder &add_property(CharacteristicProperties property) {
+        properties_ =
+                static_cast<CharacteristicProperties>(properties_ | property);
+        return *this;
+    }
+
+    CharacteristicBuilder &set_cached_value(std::vector<uint8_t> value) {
+        todo("This is not implemented yet");
+
+        value_ = std::move(value);
+        return *this;
+    }
+
+    ManagedCharacteristic build() {
+        return ManagedCharacteristic{uuid_, properties_, permissions_, value_};
+    }
+
+private:
+    CharacteristicProperties properties_{};
+    std::optional<std::vector<uint8_t>> value_ = std::nullopt;
+    Permissions permissions_{};
+    UUID uuid_;
+};
+
+class ServiceBuilder {
+public:
+    explicit ServiceBuilder(UUID uuid) : service_{uuid} {}
+
+    void add_characteristic(ManagedCharacteristic characteristic) {
+        service_.add_characteristic(std::move(characteristic));
+    }
+
+    ManagedService build() { return service_; }
+
+private:
+    ManagedService service_;
 };

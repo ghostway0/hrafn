@@ -1,24 +1,46 @@
 #include <fmt/ranges.h>
 #include <spdlog/spdlog.h>
 
+#include "absl/time/time.h"
 #include "btle/btle.h"
 
 int main() {
-    Adapter adapter{};
-    absl::SleepFor(absl::Milliseconds(100));
+    {
+        CentralAdapter adapter{};
+        absl::SleepFor(absl::Milliseconds(100));
 
-    adapter.on_discovery([](Peripheral peripheral, AdvertisingData data) {
-        spdlog::info("Discovered peripheral with UUID: {} services [{}]",
-                peripheral.uuid(), fmt::join(data.service_uuids, ", "));
-    });
+        adapter.on_discovery([](Peripheral peripheral, AdvertisingData data) {
+            spdlog::info("Discovered peripheral with UUID: {} services [{}]",
+                    peripheral.uuid(),
+                    fmt::join(data.service_uuids, ", "));
+        });
 
-    adapter.start_scanning({});
-    absl::SleepFor(absl::Seconds(5));
-    adapter.stop_scanning();
+        adapter.start_scanning({});
+        absl::SleepFor(absl::Seconds(5));
+        adapter.stop_scanning();
+    }
 
-    spdlog::info("Starting to advertise");
+    {
+        PeripheralAdapter adapter{};
+        absl::SleepFor(absl::Milliseconds(100));
 
-    adapter.start_advertising({.local_name = "gil buchbinder the corech of the sfarim"});
-    absl::SleepFor(absl::Seconds(30));
-    adapter.stop_advertising();
+        spdlog::info("Starting to advertise");
+
+        ServiceBuilder service_builder{
+                UUID::parse("00001800-0000-1000-8000-00805f9b34fb").value()};
+
+        service_builder.add_characteristic(
+                CharacteristicBuilder{
+                        UUID::parse("00002a00-0000-1000-8000-00805f9b34fb")
+                                .value()}
+                        .add_property(CharacteristicPropertyRead)
+                        .build());
+
+        adapter.add_service(service_builder.build());
+
+        adapter.start_advertising({.local_name = "lol"});
+
+        absl::SleepFor(absl::Seconds(5));
+        adapter.stop_advertising();
+    }
 }

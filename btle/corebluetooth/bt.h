@@ -69,6 +69,8 @@ public:
 
     std::vector<Descriptor> descriptors();
 
+    UUID uuid();
+
 private:
     void *raw_;
 
@@ -227,41 +229,25 @@ public:
     ManagedCharacteristic(UUID uuid,
             CharacteristicProperties properties,
             Permissions permissions,
-            std::vector<uint8_t> value);
+            std::optional<std::vector<uint8_t>> value);
+
+    UUID uuid();
 
     void set_descriptors(std::vector<Descriptor> descriptors);
 
     void set_value(std::vector<uint8_t> value);
-
-    void on_read(std::function<void(UUID)> callback);
-
-    void on_write(
-            std::function<void(UUID, std::vector<uint8_t> const &)> callback);
-
-    void on_notify(std::function<void(UUID)> callback);
-
-    void on_indicate(std::function<void(UUID)> callback);
-
-    void on_subscribe(std::function<void(UUID)> callback);
-
-    void on_unsubscribe(std::function<void(UUID)> callback);
 
     void *repr() { return raw_; }
 
 private:
     void *raw_;
 
-    std::function<void(UUID)> on_read_;
-    std::function<void(UUID, std::vector<uint8_t> const &)> on_write_;
-    std::function<void(UUID)> on_notify_;
-    std::function<void(UUID)> on_indicate_;
-    std::function<void(UUID)> on_subscribe_;
-    std::function<void(UUID)> on_unsubscribe_;
+    friend class CharacteristicBuilder;
 };
 
 class ManagedService {
 public:
-    explicit ManagedService(UUID uuid);
+    explicit ManagedService(UUID uuid, bool primary = true);
 
     void add_characteristic(ManagedCharacteristic characteristic);
 
@@ -282,6 +268,22 @@ struct AdvertisingOptions {
     std::vector<UUID> solicited_service_uuids;
 };
 
+class Central {
+public:
+    static Central from_raw(void *raw) { return Central{raw}; }
+
+    UUID uuid();
+
+    size_t maximum_write_length();
+
+    void *repr() { return raw_; }
+
+private:
+    void *raw_;
+
+    explicit Central(void *raw) : raw_{raw} {}
+};
+
 class PeripheralManager {
 public:
     PeripheralManager();
@@ -296,51 +298,85 @@ public:
 
     void set_manufacturer_data(std::vector<uint8_t> data);
 
-    void set_on_connect(std::function<void(Peripheral)> &&callback) {
+    void set_on_connect(std::function<void(Central)> &&callback) {
         on_connect_.swap(callback);
+    }
+
+    void set_on_disconnect(std::function<void(Central)> &&callback) {
+        on_disconnect_.swap(callback);
+    }
+
+    void set_on_subscribe(
+            std::function<void(Central, Characteristic)> &&callback) {
+        on_subscribe_.swap(callback);
+    }
+
+    void set_on_unsubscribe(
+            std::function<void(Central, Characteristic)> &&callback) {
+        on_unsubscribe_.swap(callback);
+    }
+
+    void set_on_read(
+            std::function<void(Central, Characteristic)> &&callback) {
+        on_read_.swap(callback);
+    }
+
+    void set_on_write(std::function<void(
+                    Central, Characteristic, std::vector<uint8_t>)>
+                    &&callback) {
+        on_write_.swap(callback);
     }
 
     void *repr() { return raw_; }
 
-    void on_connect(Peripheral peripheral) {
+    // bad code.
+
+    void on_connect(Central central) {
         if (on_connect_) {
-            on_connect_(std::move(peripheral));
+            on_connect_(std::move(central));
         }
     }
 
-    void on_subscribe(Peripheral peripheral, Characteristic characteristic) {
+    void on_disconnect(Central central) {
+        if (on_disconnect_) {
+            on_disconnect_(std::move(central));
+        }
+    }
+
+    void on_subscribe(Central central, Characteristic characteristic) {
         if (on_subscribe_) {
-            on_subscribe_(std::move(peripheral), std::move(characteristic));
+            on_subscribe_(std::move(central), std::move(characteristic));
         }
     }
 
-    void on_unsubscribe(Peripheral peripheral, Characteristic characteristic) {
+    void on_unsubscribe(Central central, Characteristic characteristic) {
         if (on_unsubscribe_) {
-            on_unsubscribe_(std::move(peripheral), std::move(characteristic));
+            on_unsubscribe_(std::move(central), std::move(characteristic));
         }
     }
 
-    void on_read(Peripheral peripheral, Characteristic chr) {
+    void on_read(Central central, Characteristic chr) {
         if (on_read_) {
-            on_read_(std::move(peripheral), std::move(chr));
+            on_read_(std::move(central), std::move(chr));
         }
     }
 
-    void on_write(Peripheral peripheral,
+    void on_write(Central central,
             Characteristic chr,
-            std::vector<char> value) {
+            std::vector<uint8_t> value) {
         if (on_write_) {
-            on_write_(std::move(peripheral), std::move(chr), std::move(value));
+            on_write_(std::move(central), std::move(chr), std::move(value));
         }
     }
 
 private:
     void *raw_;
 
-    std::function<void(Peripheral)> on_connect_;
-    std::function<void(Peripheral, Characteristic)> on_subscribe_;
-    std::function<void(Peripheral, Characteristic)> on_unsubscribe_;
-    std::function<void(Peripheral, Characteristic)> on_read_;
-    std::function<void(Peripheral, Characteristic, std::vector<char>)>
+    std::function<void(Central)> on_connect_;
+    std::function<void(Central)> on_disconnect_;
+    std::function<void(Central, Characteristic)> on_subscribe_;
+    std::function<void(Central, Characteristic)> on_unsubscribe_;
+    std::function<void(Central, Characteristic)> on_read_;
+    std::function<void(Central, Characteristic, std::vector<uint8_t>)>
             on_write_;
 };

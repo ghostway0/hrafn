@@ -20,6 +20,16 @@ void Characteristic::set_descriptors(std::vector<Descriptor> descriptors) {
   chr.descriptors = arr;
 }
 
+UUID Characteristic::uuid() {
+  CBCharacteristic *chr = static_cast<CBCharacteristic *>(raw_);
+  return UUID::parse(chr.UUID.UUIDString.UTF8String).value();
+}
+
+UUID ManagedCharacteristic::uuid() {
+  CBCharacteristic *chr = static_cast<CBCharacteristic *>(raw_);
+  return UUID::parse(chr.UUID.UUIDString.UTF8String).value();
+}
+
 std::vector<Descriptor> Characteristic::descriptors() {
   CBCharacteristic *chr = static_cast<CBCharacteristic *>(raw_);
   NSArray *arr = chr.descriptors;
@@ -56,8 +66,7 @@ Characteristic::from(UUID uuid, CharacteristicProperties properties,
              value:nsd
        permissions:(CBAttributePermissions)permissions.as_int()];
 
-  return Characteristic(
-      chr);
+  return Characteristic(chr);
 }
 
 // descriptor
@@ -233,6 +242,26 @@ std::vector<Service> Service::included_services() {
   return objs;
 }
 
+ManagedCharacteristic::ManagedCharacteristic(
+    UUID uuid, CharacteristicProperties properties, Permissions permissions,
+    std::optional<std::vector<uint8_t>> value) {
+  CBUUID *cbuuid = str_to_cbuuid(uuid.to_string());
+
+  // FIXME: currently only works with on-demand values (when value is null)
+  NSData *nsd = nil;
+  if (value.has_value()) {
+    nsd =
+        [NSData dataWithBytes:value.value().data() length:value.value().size()];
+  }
+
+  CBMutableCharacteristic *chr = [[CBMutableCharacteristic alloc]
+      initWithType:cbuuid
+        properties:(CBCharacteristicProperties)properties
+             value:nsd
+       permissions:(CBAttributePermissions)permissions.as_int()];
+
+  raw_ = chr;
+}
 
 void ManagedCharacteristic::set_descriptors(
     std::vector<Descriptor> descriptors) {
@@ -250,6 +279,13 @@ void ManagedCharacteristic::set_value(std::vector<uint8_t> value) {
   CBMutableCharacteristic *chr = static_cast<CBMutableCharacteristic *>(raw_);
   NSData *nsd = [NSData dataWithBytes:value.data() length:value.size()];
   chr.value = nsd;
+}
+
+ManagedService::ManagedService(UUID uuid, bool primary) {
+  CBUUID *cbuuid = str_to_cbuuid(uuid.to_string());
+  CBMutableService *svc =
+      [[CBMutableService alloc] initWithType:cbuuid primary:primary];
+  raw_ = svc;
 }
 
 void ManagedService::add_characteristic(ManagedCharacteristic characteristic) {

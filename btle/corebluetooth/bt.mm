@@ -9,9 +9,9 @@
 #include <span>
 #include <vector>
 
-#include "helpers.h"
-#include "btle/types.h"
 #import "bt.h"
+#include "btle/types.h"
+#include "helpers.h"
 
 @interface PeripheralDelegate : NSObject <CBPeripheralDelegate> {
   Peripheral *parent_;
@@ -120,8 +120,6 @@
       adv_dict[[key UTF8String]] = [nsstr UTF8String];
     }
   }
-  
-  NSLog(@"Discovered peripheral: %@", peripheral);
 
   Peripheral prph = Peripheral::from_raw((void *)peripheral);
   self->parent->on_discovered(prph, {});
@@ -282,14 +280,14 @@ void CentralManager::cancel_connect(Peripheral &peripheral) {
 - (void)peripheralManager:(CBPeripheralManager *)peripheral
                          central:(CBCentral *)central
     didSubscribeToCharacteristic:(CBCharacteristic *)characteristic {
-  parent->on_subscribe(Peripheral::from_raw((void *)central),
+  parent->on_subscribe(Central::from_raw((void *)central),
                        Characteristic::from_raw((void *)characteristic));
 }
 
 - (void)peripheralManager:(CBPeripheralManager *)peripheral
                              central:(CBCentral *)central
     didUnsubscribeFromCharacteristic:(CBCharacteristic *)characteristic {
-  parent->on_unsubscribe(Peripheral::from_raw((void *)central),
+  parent->on_unsubscribe(Central::from_raw((void *)central),
                          Characteristic::from_raw((void *)characteristic));
 }
 
@@ -299,7 +297,7 @@ void CentralManager::cancel_connect(Peripheral &peripheral) {
 
 - (void)peripheralManager:(CBPeripheralManager *)peripheral
     didReceiveReadRequest:(CBATTRequest *)request {
-  parent->on_read(Peripheral::from_raw((void *)request.central),
+  parent->on_read(Central::from_raw((void *)request.central),
                   Characteristic::from_raw((void *)request.characteristic));
 }
 
@@ -307,7 +305,7 @@ void CentralManager::cancel_connect(Peripheral &peripheral) {
     didReceiveWriteRequests:(NSArray<CBATTRequest *> *)requests {
   for (CBATTRequest *req in requests) {
     parent->on_write(
-        Peripheral::from_raw((void *)req.central),
+        Central::from_raw((void *)req.central),
         Characteristic::from_raw((void *)req.characteristic),
         {(char *)req.value.bytes, (char *)req.value.bytes + req.value.length});
   }
@@ -322,9 +320,14 @@ void CentralManager::cancel_connect(Peripheral &peripheral) {
 }
 
 - (void)peripheralManager:(CBPeripheralManager *)peripheral
-     didReceiveConnection:(CBPeripheral *)central
-     didReceiveConnection:(CBPeripheral *)peripheral {
-  parent->on_connect(Peripheral::from_raw((void *)peripheral));
+     didReceiveConnection:(CBCentral *)central
+     {
+  parent->on_connect(Central::from_raw((void *)central));
+}
+
+- (void)peripheralManager:(CBPeripheralManager *)peripheral
+        didLoseConnection:(CBPeripheral *)central {
+  parent->on_disconnect(Central::from_raw((void *)central));
 }
 
 - (void)peripheralManager:(CBPeripheralManager *)peripheral
