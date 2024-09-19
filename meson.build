@@ -13,7 +13,7 @@ cxx = meson.get_compiler('cpp')
 asio_dep = dependency('asio')
 sodium_dep = dependency('libsodium')
 protobuf_dep = dependency('protobuf')
-absl_dep = dependency('absl', modules: ['absl::strings', 'absl::time', 'absl::log'])
+absl_dep = dependency('absl', modules: ['absl::strings', 'absl::time'])
 fmt_dep = dependency('fmt')
 spdlog_dep = dependency('spdlog')
 doctest_dep = dependency('doctest')
@@ -37,31 +37,33 @@ subdir('utils')
 subdir('net')
 subdir('btle')
 
+# executable(
+#   'hrafn',
+#   files('src/hrafn.cpp'),
+#   proto_generated,
+#   dependencies: [
+#     asio_dep,
+#     sodium_dep,
+#     absl_dep,
+#     protobuf_dep,
+#     fmt_dep,
+#     spdlog_dep,
+#     crypto_dep,
+#     utils_dep,
+#     btle_dep,
+#   ],
+#   include_directories: [hrafn_inc],
+# )
+
 executable(
-  'hrafn',
-  files('src/hrafn.cpp'),
+  'bttest',
+  files('src/test.cpp'),
   proto_generated,
   dependencies: [
     asio_dep,
     sodium_dep,
     absl_dep,
     protobuf_dep,
-    fmt_dep,
-    spdlog_dep,
-    crypto_dep,
-    utils_dep,
-    btle_dep,
-  ],
-  include_directories: [hrafn_inc],
-)
-
-executable(
-  'bttest',
-  files('src/test.cpp'),
-  dependencies: [
-    asio_dep,
-    sodium_dep,
-    absl_dep,
     fmt_dep,
     spdlog_dep,
     crypto_dep,

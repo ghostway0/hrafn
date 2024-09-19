@@ -1,8 +1,4 @@
 #include <string>
-#include <tbb/tbb.h>
-
-#include "btle/types.h"
-#include "hrafn.p/messages.pb.h"
 
 #ifdef __APPLE__
 
@@ -14,7 +10,16 @@
 
 #endif
 
+#include <tbb/concurrent_map.h>
+#include <asio.hpp>
+#include <asio/experimental/awaitable_operators.hpp>
+#include <asio/experimental/channel.hpp>
+
+#include "btle/types.h"
+#include "messages.pb.h"
+
 #include "crypto/crypto.h"
+#include "net/net.h"
 
 Adapter get_default_adapter();
 
@@ -46,7 +51,7 @@ struct Packet {
 
 using StreamChannel = asio::experimental::channel<void(
         std::error_code, std::unique_ptr<Stream>)>;
-using DataChannel = asio::experimental::channel<void(std::error_code, Packet)>;
+using DataChannel = asio::experimental::channel<void(std::error_code, std::unique_ptr<Packet>)>;
 
 class StreamMultiplexer {
 public:
@@ -59,32 +64,35 @@ public:
     }
 
     asio::awaitable<void> run(asio::io_context &ctx) {
-        adapter_.on_discovery([this](UUID uuid, AdvertisingData const &) {
-            stream_channel_.try_send(adapter_.connect(uuid));
-        });
-
-        adapter_.on_data_received(
-                [this](std::error_code ec, std::vector<uint8_t> data) {
-                    auto packet = Packet::from_proto(data);
-
-                    streams_.at(packet.from).try_send(ec, packet);
+        adapter_.on_discovery(
+                [this](Peripheral &peripheral, AdvertisingData const &) {
+                    adapter_.connect(peripheral, ConnectOptions{});
+                    // stream_channel_.try_send(asio::error_code{},
+                    //         std::make_unique<Stream>(peripheral));
                 });
 
-        asio::co_spawn(ctx, [&ctx, this]() -> asio::awaitable<void> {
-            while (true) {
-                adapter_.start_scanning();
-                asio::steady_timer timer{ctx, 30s};
-                co_await timer.async_wait(asio::use_awaitable);
+        // adapter_.on_data_received(
+        //         [this](std::error_code ec, std::vector<uint8_t> data) {
+        //             auto packet = Packet::from_proto(data);
+        //
+        //             streams_.at(packet.from).try_send(ec, packet);
+        //         });
 
-                adapter_.stop_scanning();
-            }
-        });
+        // asio::co_spawn(ctx, [&ctx, this]() -> asio::awaitable<void> {
+        //     while (true) {
+        //         adapter_.start_scanning();
+        //         asio::steady_timer timer{ctx, 30s};
+        //         co_await timer.async_wait(asio::use_awaitable);
+        //
+        //         adapter_.stop_scanning();
+        //     }
+        // });
 
-        adapter_.start_advertising(
-                AdvertisingData{.local_name = "hrafn"});
+        adapter_.start_advertising(AdvertisingOptions{.local_name = "hrafn"});
 
         // TODO: start to listen for commands
         // while (running) {}
+        co_return;
     }
 
 private:

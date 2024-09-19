@@ -8,6 +8,8 @@
 #include <string>
 #include <string_view>
 
+#include <fmt/core.h>
+
 class UUID {
 public:
     static constexpr size_t kSize = 16;
@@ -22,4 +24,14 @@ public:
 
 private:
     std::array<uint8_t, kSize> bytes_;
+};
+
+template<>
+struct fmt::formatter<UUID> {
+    constexpr auto parse(format_parse_context &ctx) const { return ctx.end(); }
+
+    template<typename FormatContext>
+    auto format(const UUID &uuid, FormatContext &ctx) const {
+        return format_to(ctx.out(), "{}", uuid.to_string());
+    }
 };
