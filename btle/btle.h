@@ -11,10 +11,10 @@
 
 #endif
 
-#include <spdlog/spdlog.h>
 #include <asio.hpp>
 #include <asio/experimental/awaitable_operators.hpp>
 #include <asio/experimental/channel.hpp>
+#include <spdlog/spdlog.h>
 #include <tbb/concurrent_map.h>
 
 #include "btle/types.h"
@@ -56,8 +56,9 @@ using DataChannel = asio::experimental::channel<void(
 
 class StreamMultiplexer {
 public:
-    explicit StreamMultiplexer(StreamChannel &stream_channel)
-        : streams_{}, stream_channel_{stream_channel} {}
+    explicit StreamMultiplexer(
+            StreamChannel &stream_channel, asio::io_context &ctx)
+        : central_adapter_{ctx}, streams_{}, stream_channel_{stream_channel} {}
 
     tbb::concurrent_map<Pubkey, DataChannel> &streams_channel() {
         return streams_;
@@ -65,10 +66,15 @@ public:
 
     asio::awaitable<void> run(asio::io_context &ctx) {
         central_adapter_.on_discovery(
-                [this](Peripheral &peripheral, AdvertisingData const &) {
+                [this](Peripheral &peripheral,
+                        AdvertisingData const &) -> asio::awaitable<void> {
                     central_adapter_.connect(peripheral, ConnectOptions{});
+                    spdlog::info("discovered peripheral {}({})",
+                            peripheral.name(),
+                            peripheral.uuid());
                     // stream_channel_.try_send(asio::error_code{},
                     //         std::make_unique<Stream>(peripheral));
+                    co_return;
                 });
 
         // adapter_.on_data_received(
@@ -97,7 +103,7 @@ public:
     }
 
 private:
-    CentralAdapter central_adapter_{};
+    CentralAdapter central_adapter_;
     PeripheralAdapter peripheral_adapter_{};
     tbb::concurrent_map<Pubkey, DataChannel> streams_;
     StreamChannel &stream_channel_;

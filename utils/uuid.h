@@ -17,6 +17,7 @@ public:
     static std::optional<UUID> parse(std::string_view str);
     static std::optional<UUID> parse_raw(std::span<uint8_t> bytes);
     static UUID generate_random();
+    static UUID from_string(std::string_view str) { return parse(str).value(); }
 
     std::string to_string() const;
     std::span<uint8_t const> bytes() const { return bytes_; };

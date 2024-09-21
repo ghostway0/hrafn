@@ -1,4 +1,4 @@
-project('hrafn', 'cpp', 'objcpp', 'objc', default_options: [])
+project('hrafn', 'cpp', 'objcpp', default_options: [])
 
 cpp_args = ['-march=native', '-std=c++23']
 add_project_arguments(cpp_args, language: 'cpp')

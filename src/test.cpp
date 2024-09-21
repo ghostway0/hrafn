@@ -1,19 +1,41 @@
+#include <absl/time/time.h>
+#include <asio.hpp>
 #include <fmt/ranges.h>
 #include <spdlog/spdlog.h>
 
-#include "absl/time/time.h"
 #include "btle/btle.h"
 
 int main() {
+    asio::io_context ctx{};
+
     {
-        CentralAdapter adapter{};
+        CentralAdapter adapter{ctx};
         absl::SleepFor(absl::Milliseconds(100));
 
-        adapter.on_discovery([](Peripheral peripheral, AdvertisingData data) {
-            spdlog::info("Discovered peripheral with UUID: {} services [{}]",
-                    peripheral.uuid(),
-                    fmt::join(data.service_uuids, ", "));
-        });
+        adapter.on_discovery(
+                [&](Peripheral &peripheral,
+                        AdvertisingData const &data) -> asio::awaitable<void> {
+                    spdlog::info(
+                            "Discovered peripheral with UUID: {} services [{}]",
+                            peripheral.uuid(),
+                            fmt::join(data.service_uuids, ", "));
+                    adapter.connect(peripheral, {});
+
+                    std::vector<Service> services =
+                            co_await peripheral.discover_services();
+
+                    for (auto const &service : services) {
+                        spdlog::info("Service: {}", service.uuid());
+                        std::vector<Characteristic> characteristics =
+                                co_await peripheral.discover_characteristics(service);
+
+                        for (auto const &characteristic : characteristics) {
+                            spdlog::info("Characteristic: {}", characteristic.uuid());
+                        }
+                    }
+
+                    co_return;
+                });
 
         adapter.start_scanning({});
         absl::SleepFor(absl::Seconds(5));
@@ -31,8 +53,8 @@ int main() {
 
         service_builder.add_characteristic(
                 CharacteristicBuilder{
-                        UUID::parse("00002a00-0000-1000-8000-00805f9b34fb")
-                                .value()}
+                        UUID::from_string(
+                                "00002a00-0000-1000-8000-00805f9b34fb")}
                         .add_property(CharacteristicPropertyRead)
                         .build());
 

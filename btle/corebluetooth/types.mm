@@ -1,5 +1,6 @@
 #import <CoreBluetooth/CoreBluetooth.h>
 #import <Foundation/Foundation.h>
+#include <cstdint>
 
 #include <span>
 #include <vector>
@@ -20,12 +21,12 @@ void Characteristic::set_descriptors(std::vector<Descriptor> descriptors) {
   chr.descriptors = arr;
 }
 
-UUID Characteristic::uuid() {
+UUID Characteristic::uuid() const {
   CBCharacteristic *chr = static_cast<CBCharacteristic *>(raw_);
   return UUID::parse(chr.UUID.UUIDString.UTF8String).value();
 }
 
-UUID ManagedCharacteristic::uuid() {
+UUID ManagedCharacteristic::uuid() const {
   CBCharacteristic *chr = static_cast<CBCharacteristic *>(raw_);
   return UUID::parse(chr.UUID.UUIDString.UTF8String).value();
 }
@@ -87,18 +88,16 @@ std::vector<uint8_t> Descriptor::value() {
 
   if ([val isKindOfClass:[NSData class]]) {
     NSData *nsdata = (NSData *)val;
-    return std::vector<uint8_t>((uint8_t *)nsdata.bytes,
-                                (uint8_t *)nsdata.bytes + nsdata.length);
+    return {(uint8_t *)nsdata.bytes, (uint8_t *)nsdata.bytes + nsdata.length};
   }
 
   if ([val isKindOfClass:[NSString class]]) {
     NSString *nsstring = (NSString *)val;
     NSData *nsd = [nsstring dataUsingEncoding:NSUTF8StringEncoding];
-    return std::vector<uint8_t>((uint8_t *)nsd.bytes,
-                                (uint8_t *)nsd.bytes + nsd.length);
+    return {(uint8_t *)nsd.bytes, (uint8_t *)nsd.bytes + nsd.length};
   }
 
-  return std::vector<uint8_t>();
+  return {};
 }
 
 UUID Descriptor::uuid() {
@@ -108,8 +107,8 @@ UUID Descriptor::uuid() {
 
 // peripheral
 
-UUID Peripheral::uuid() {
-  CBPeripheral *prph = static_cast<CBPeripheral *>(raw_);
+UUID Peripheral::uuid() const {
+  auto *prph = static_cast<CBPeripheral *>(raw_);
   NSString *str = prph.identifier.UUIDString;
   std::string cpp_str = [str UTF8String];
   return UUID::parse(cpp_str).value();
@@ -120,6 +119,8 @@ std::vector<Service> Peripheral::services() {
   NSArray *arr = prph.services;
 
   std::vector<Service> objs;
+  objs.reserve([arr count]);
+
   for (int i = 0; i < [arr count]; ++i) {
     objs.push_back(Service::from_raw([arr objectAtIndex:i]));
   }
@@ -127,19 +128,43 @@ std::vector<Service> Peripheral::services() {
   return objs;
 }
 
-void Peripheral::discover_services(std::span<UUID> uuids) {
+asio::awaitable<std::vector<Service>>
+Peripheral::discover_services(std::optional<std::span<UUID>> uuids) {
+
+  completion_signal_ = new asio::steady_timer(co_await asio::this_coro::executor);
+
   auto *prph = static_cast<CBPeripheral *>(raw_);
-  NSArray *arr = uuids_to_cbuuids(uuids);
+  NSArray *arr = nil;
+
+  if (uuids.has_value()) {
+    arr = uuids_to_cbuuids(uuids.value());
+  }
+
   [prph discoverServices:arr];
+
+  assert(completion_signal_ != nullptr);
+  co_await completion_signal_->async_wait(asio::use_awaitable);
+
+  co_return services();
 }
 
-void Peripheral::discover_characteristics(Service service,
-                                          std::span<UUID> uuids) {
+asio::awaitable<std::vector<Characteristic>>
+Peripheral::discover_characteristics(Service service,
+                                     std::optional<std::span<UUID>> uuids) {
   auto *prph = static_cast<CBPeripheral *>(raw_);
 
   auto *svc = static_cast<CBService *>(service.repr());
-  NSArray *arr = uuids_to_cbuuids(uuids);
+  NSArray *arr = nil;
+
+  if (uuids.has_value()) {
+    arr = uuids_to_cbuuids(uuids.value());
+  }
+
   [prph discoverCharacteristics:arr forService:svc];
+
+  completion_signal_ = new asio::steady_timer(co_await asio::this_coro::executor);
+
+  co_return service.characteristics();
 }
 
 void Peripheral::discover_descriptors(Characteristic characteristic) {
@@ -161,7 +186,7 @@ void Peripheral::read_descriptor(Descriptor descriptor) {
 }
 
 void Peripheral::write_characteristic(Characteristic characteristic,
-                                      std::vector<char> value, int type) {
+                                      std::vector<uint8_t> value, int type) {
   auto *prph = static_cast<CBPeripheral *>(raw_);
   auto *chr = static_cast<CBCharacteristic *>(characteristic.repr());
 
@@ -172,7 +197,7 @@ void Peripheral::write_characteristic(Characteristic characteristic,
 }
 
 void Peripheral::write_descriptor(Descriptor descriptor,
-                                  std::vector<char> value) {
+                                  std::vector<uint8_t> value) {
   auto *prph = static_cast<CBPeripheral *>(raw_);
   auto *dsc = static_cast<CBDescriptor *>(descriptor.repr());
 
@@ -206,9 +231,28 @@ void Peripheral::read_rssi() {
   [prph readRSSI];
 }
 
+UUID Central::uuid() {
+  CBCentral *cntrl = static_cast<CBCentral *>(raw_);
+  NSString *str = cntrl.identifier.UUIDString;
+  std::string cpp_str = [str UTF8String];
+  return UUID::from_string(cpp_str);
+}
+
+void Central::notify(ManagedCharacteristic from, std::vector<uint8_t> value) {
+  auto *cntrl = static_cast<CBCentral *>(raw_);
+  auto *chr = static_cast<CBMutableCharacteristic *>(from.repr());
+  NSData *nsd = [NSData dataWithBytes:value.data() length:value.size()];
+  [cntrl updateValue:nsd forCharacteristic:chr onSubscribedCentrals:nil];
+}
+
+size_t Central::maximum_write_length() {
+  auto *cntrl = static_cast<CBCentral *>(raw_);
+  return [cntrl maximumUpdateValueLength];
+}
+
 // service
 
-UUID Service::uuid() {
+UUID Service::uuid() const {
   auto *svc = static_cast<CBService *>(raw_);
   return UUID::parse(svc.UUID.UUIDString.UTF8String).value();
 }

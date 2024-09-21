@@ -5,6 +5,7 @@
 
 #include <absl/time/clock.h>
 #include <absl/time/time.h>
+#include <asio.hpp>
 
 #include "btle/types.h"
 #include "utils/uuid.h"
@@ -69,7 +70,7 @@ public:
 
     std::vector<Descriptor> descriptors();
 
-    UUID uuid();
+    UUID uuid() const;
 
 private:
     void *raw_;
@@ -81,7 +82,7 @@ class Service {
 public:
     static Service from_raw(void *raw) { return Service{raw}; }
 
-    UUID uuid();
+    UUID uuid() const;
 
     std::vector<Characteristic> characteristics();
 
@@ -114,19 +115,29 @@ class Peripheral {
 public:
     static Peripheral from_raw(void *raw) { return Peripheral{raw}; }
 
+    ~Peripheral() {
+        if (completion_signal_) {
+            completion_signal_->cancel();
+            delete completion_signal_;
+        }
+    }
+
     void set_delegate();
 
     std::string name();
 
-    UUID uuid();
+    UUID uuid() const;
 
     std::vector<Service> services();
 
-    void discover_services(std::span<UUID> uuids);
+    asio::awaitable<std::vector<Service>> discover_services(
+            std::optional<std::span<UUID>> uuids = std::nullopt);
 
     void discover_included_services(Service service, std::span<UUID> uuids);
 
-    void discover_characteristics(Service service, std::span<UUID> uuids);
+    asio::awaitable<std::vector<Characteristic>> discover_characteristics(
+            Service service,
+            std::optional<std::span<UUID>> uuids = std::nullopt);
 
     void discover_descriptors(Characteristic characteristic);
 
@@ -134,10 +145,11 @@ public:
 
     void read_descriptor(Descriptor descriptor);
 
-    void write_characteristic(
-            Characteristic characteristic, std::vector<char> value, int type);
+    void write_characteristic(Characteristic characteristic,
+            std::vector<uint8_t> value,
+            int type);
 
-    void write_descriptor(Descriptor descriptor, std::vector<char> value);
+    void write_descriptor(Descriptor descriptor, std::vector<uint8_t> value);
 
     size_t max_write_len(int type);
 
@@ -153,6 +165,13 @@ public:
         on_disconnected_ = std::move(callback);
     }
 
+    void signal() {
+        if (completion_signal_) {
+            completion_signal_->cancel();
+            delete completion_signal_;
+        }
+    }
+
     void *repr() { return raw_; }
 
     // internal funcitons. this is horrible code.
@@ -165,10 +184,9 @@ public:
 
 private:
     void *raw_;
-
     std::vector<Service> services_;
-
     std::function<void()> on_disconnected_;
+    asio::steady_timer *completion_signal_ = nullptr;
 
     explicit Peripheral(void *raw) : raw_{raw} {}
 };
@@ -188,7 +206,7 @@ struct ConnectOptions {
 
 class CentralManager {
 public:
-    CentralManager();
+    explicit CentralManager(asio::io_context &ctx);
 
     int state();
 
@@ -198,7 +216,7 @@ public:
 
     bool is_scanning();
 
-    void connect(Peripheral peripheral, ConnectOptions const &opts);
+    void connect(Peripheral &peripheral, ConnectOptions const &opts);
 
     void cancel_connect(Peripheral &peripheral);
 
@@ -208,11 +226,22 @@ public:
         on_discovered_ = std::move(callback);
     }
 
+    // void set_notify_callback(
+    //         std::function<void(Characteristic, Peripheral)> callback) {
+    //     on_notify_ = std::move(callback);
+    // }
+
     void *repr() { return raw_; }
 
     void on_discovered(Peripheral &peripheral, AdvertisingData const &data) {
         if (on_discovered_) {
             on_discovered_(peripheral, data);
+        }
+    }
+
+    void on_notify(Characteristic &characteristic, Peripheral &peripheral) {
+        if (on_notify_) {
+            on_notify_(characteristic, peripheral);
         }
     }
 
@@ -222,6 +251,9 @@ private:
     void *raw_;
 
     std::function<void(Peripheral &, AdvertisingData const &)> on_discovered_;
+    std::function<void(Characteristic &, Peripheral &)> on_notify_;
+
+    asio::io_context &ctx_;
 };
 
 class ManagedCharacteristic {
@@ -231,7 +263,7 @@ public:
             Permissions permissions,
             std::optional<std::vector<uint8_t>> value);
 
-    UUID uuid();
+    UUID uuid() const;
 
     void set_descriptors(std::vector<Descriptor> descriptors);
 
@@ -276,6 +308,8 @@ public:
 
     size_t maximum_write_length();
 
+    void notify(ManagedCharacteristic from, std::vector<uint8_t> value);
+
     void *repr() { return raw_; }
 
 private:
@@ -316,13 +350,12 @@ public:
         on_unsubscribe_.swap(callback);
     }
 
-    void set_on_read(
-            std::function<void(Central, Characteristic)> &&callback) {
+    void set_on_read(std::function<void(Central, Characteristic)> &&callback) {
         on_read_.swap(callback);
     }
 
-    void set_on_write(std::function<void(
-                    Central, Characteristic, std::vector<uint8_t>)>
+    void set_on_write(
+            std::function<void(Central, Characteristic, std::vector<uint8_t>)>
                     &&callback) {
         on_write_.swap(callback);
     }
@@ -361,9 +394,8 @@ public:
         }
     }
 
-    void on_write(Central central,
-            Characteristic chr,
-            std::vector<uint8_t> value) {
+    void on_write(
+            Central central, Characteristic chr, std::vector<uint8_t> value) {
         if (on_write_) {
             on_write_(std::move(central), std::move(chr), std::move(value));
         }

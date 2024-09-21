@@ -1,10 +1,11 @@
 #pragma once
 
+#include "asio/io_context.hpp"
 #include "bt.h"
 
 class CentralAdapter {
 public:
-    CentralAdapter() : central_manager_{} {}
+    explicit CentralAdapter(asio::io_context &ctx) : central_manager_{ctx} {}
 
     void start_scanning(ScanOptions const &opts) {
         central_manager_.scan({}, opts);
@@ -16,10 +17,7 @@ public:
         central_manager_.cancel_connect(peripheral);
     }
 
-    void add_service(UUID service_uuid,
-            std::vector<Characteristic> const &characteristics);
-
-    void on_discovery(std::function<void(Peripheral &, AdvertisingData const &)>
+    void on_discovery(std::function<asio::awaitable<void>(Peripheral &, AdvertisingData const &)>
                     callback) {
         central_manager_.set_discovered_callback(std::move(callback));
     }

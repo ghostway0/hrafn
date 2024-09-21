@@ -14,18 +14,28 @@
 #include "helpers.h"
 
 @interface PeripheralDelegate : NSObject <CBPeripheralDelegate> {
-  Peripheral *parent_;
+  Peripheral *parent;
+  CentralManager *mgr;
 };
 @end
 
 @implementation PeripheralDelegate
 
+- (instancetype)init:(Peripheral *)parent_:(CentralManager *)mgr_ {
+  self = [super init];
+  self->parent = parent_;
+  self->mgr = mgr_;
+  return self;
+}
+
 - (void)peripheral:(CBPeripheral *)peripheral
     didDiscoverServices:(NSError *)error {
-  parent_->clear_services();
+  self->parent->clear_services();
   for (CBService *svc in peripheral.services) {
-    parent_->add_service(Service::from_raw((void *)svc));
+    self->parent->add_service(Service::from_raw((void *)svc));
   }
+
+  self->parent->signal();
 }
 
 - (void)peripheral:(CBPeripheral *)peripheral
@@ -38,6 +48,8 @@
   }
 
   svc.set_characteristics(chrs);
+
+  self->parent->signal();
 }
 
 - (void)peripheral:(CBPeripheral *)peripheral
@@ -84,7 +96,8 @@
         (CBCharacteristic *)characteristic
                                           error:(NSError *)error {
   Characteristic chr = Characteristic::from_raw((void *)characteristic);
-  // parent_->on_notify(chr);
+  Peripheral prph = Peripheral::from_raw((void *)peripheral);
+  mgr->on_notify(chr, prph);
 }
 
 @end
@@ -178,9 +191,8 @@
 
 @end
 
-CentralManager::CentralManager() {
+CentralManager::CentralManager(asio::io_context &ctx) : ctx_{ctx} {
   auto *delegate = [[CentralManagerBase alloc] init:this];
-
   raw_ = delegate;
 }
 
@@ -221,7 +233,7 @@ bool CentralManager::is_scanning() {
   return [cmgr isScanning];
 }
 
-void CentralManager::connect(Peripheral peripheral,
+void CentralManager::connect(Peripheral &peripheral,
                              ConnectOptions const &opts) {
   auto *cmgr = [static_cast<CentralManagerBase *>(raw_) underlying];
   auto *prph = static_cast<CBPeripheral *>(peripheral.repr());
@@ -320,8 +332,7 @@ void CentralManager::cancel_connect(Peripheral &peripheral) {
 }
 
 - (void)peripheralManager:(CBPeripheralManager *)peripheral
-     didReceiveConnection:(CBCentral *)central
-     {
+     didReceiveConnection:(CBCentral *)central {
   parent->on_connect(Central::from_raw((void *)central));
 }
 
